@@ -1,0 +1,58 @@
+name: build-windows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.4
+
+      - name: Pub get
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Build Windows
+        run: flutter build windows --release
+
+      # ---- 便携版 zip（含 WebView2 引导器与使用说明）----
+      - name: Download WebView2 Bootstrapper
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path packaging | Out-Null
+          Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" `
+            -OutFile packaging/MicrosoftEdgeWebview2Setup.exe
+
+      - name: Package portable zip
+        shell: pwsh
+        run: .\tools\portable-package.ps1
+
+      # ---- 单文件安装版（GitHub runner 预装 Inno Setup 6）----
+      - name: Package installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { $iscc = "ISCC.exe" }
+          & $iscc installer/SnapFetch.iss
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SnapFetch-windows-x64
+          path: |
+            release/SnapFetch-*-win64-portable.zip
+            release/SnapFetch-*-setup.exe

@@ -1,0 +1,68 @@
+name: snapfetch
+description: "闪取 SnapFetch — 粘贴分享链接，直接高速下载（Windows 桌面端）"
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # 状态管理 / 依赖注入（解析器插件化）
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.6.1
+
+  # 网络：统一拦截器处理 Referer / Cookie / 重试 / 代理
+  dio: ^5.7.0
+  cookie_jar: ^4.0.8
+  dio_cookie_manager: ^3.3.0
+
+  # 本地数据库：下载任务 / 历史 / 收藏持久化
+  drift: ^2.20.0
+  sqlite3_flutter_libs: ^0.5.24
+  path_provider: ^2.1.4
+  path: ^1.9.0
+
+  # 凭证加密存储：M2 再定实现。
+  # 说明：flutter_secure_storage 的 Windows 插件依赖 ATL(atlstr.h)，本机 VS2022 Build Tools
+  # 未装「C++ ATL 支持」组件会导致链接失败。M0 先不引入，M2 改用 win32 包直接调 DPAPI
+  # (CryptProtectData / CryptUnprotectData) 自写 credential_vault，零额外原生依赖。
+  win32: ^5.15.0
+
+  # 应用内嵌浏览器登录（WebView2）—— 行为对齐官方，底层不同
+  desktop_webview_window: ^0.2.3
+
+  # 预览
+  media_kit: ^1.1.11
+  media_kit_video: ^1.2.5
+  media_kit_libs_windows_video: ^1.0.9
+  photo_view: ^0.15.0
+
+  # Windows 桌面集成
+  tray_manager: ^0.2.2
+  window_manager: ^0.4.3
+  flutter_local_notifications: ^18.0.1
+
+  # 工具
+  uuid: ^4.5.1
+  intl: ^0.20.2
+  flutter_inappwebview: ^6.1.5
+  ffi: ^2.2.0
+  flutter_inappwebview_windows: ^0.6.0
+  file_selector: ^1.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  build_runner: ^2.4.13
+  drift_dev: ^2.20.0
+  riverpod_generator: ^2.6.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icons/
+    - assets/images/
