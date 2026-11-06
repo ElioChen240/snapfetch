@@ -215,24 +215,32 @@ void main() {
   group('123 云盘解析器', () {
     late _FixtureServer s;
     setUp(() async {
+      // 官方端点：GET /b/api/share/get（免登录，UA=Dart）
       s = _FixtureServer.dynamic({
-        'POST /api/share/info': (_) => _Fixture(jsonEncode({
-              'code': 0,
-              'data': {'ShareKey': 'kEf9-abc', 'ShareTitle': '我的分享', 'RootDirID': 100}
-            })),
-        'GET /api/share/list': (req) {
-          // 子目录返回空（防递归 fixture）；根目录返回 2 项
-          final inSub = req.uri.queryParameters['parentFileId'] != '0'
-              && req.uri.queryParameters['parentFileId'] != '100';
+        'GET /b/api/share/get': (req) {
+          final inSub = (req.uri.queryParameters['ParentFileId'] ?? '0') != '0';
           return _Fixture(jsonEncode({
             'code': 0,
             'data': {
-              'Total': inSub ? 0 : 2,
+              'Expired': false,
+              'Next': '-1',
               'InfoList': inSub
                   ? []
                   : [
-                      {'FileName': '目录A', 'PdirID': 0, 'FileId': 201, 'dir': true},
-                      {'FileName': '文件1.zip', 'FileId': 202, 'Size': 1024},
+                      {
+                        'FileName': '目录A',
+                        'FileId': 201,
+                        'Type': 1,
+                        'ParentFileId': 0,
+                      },
+                      {
+                        'FileName': '文件1.zip',
+                        'FileId': 202,
+                        'Type': 0,
+                        'Size': 1024,
+                        'S3KeyFlag': 'S3K',
+                        'Etag': 'ETAG1',
+                      },
                     ]
             }
           }));
@@ -242,15 +250,16 @@ void main() {
     });
     tearDown(() => s.stop());
 
-    test('免登录解析：信息 + 文件树', () async {
+    test('免登录解析：文件树与取链占位', () async {
       final result = await Pan123Parser()
           .parse('https://www.123pan.com/s/kEf9-abc.html 提取码: abcd', _ctx(s));
       final tree = result as FileTreeResult;
-      expect(tree.shareTitle, '我的分享');
       expect(tree.roots.length, 2);
       expect(tree.roots[0].isDirectory, isTrue);
       expect(tree.roots[1].name, '文件1.zip');
       expect(tree.roots[1].size, 1024);
+      // 取链占位：fid|s3KeyFlag|etag|size
+      expect(tree.roots[1].directUrl, 'pan123-share://202|S3K|ETAG1|1024');
     });
   });
 

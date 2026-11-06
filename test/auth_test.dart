@@ -110,13 +110,16 @@ void main() {
       }
     });
 
-    test('免登录但配了判定名的平台：主动登录仍按关键 Cookie 判定', () {
-      // pan123 免登录可用，但用户主动登录时须确认真的登录成功
+    test('123 云盘：登录态在 localStorage token，不在 Cookie', () {
+      // pan123 免登录可解析分享，但取链/浏览需 token
       final rule = kLoginRules['pan123']!;
       expect(rule.required, isFalse);
-      expect(rule.isLoginSuccess(const {'passport': 'v'}), isTrue);
-      expect(rule.isLoginSuccess(const {'random': 'v'}), isFalse,
-          reason: '配置了 successCookieNames 就按名单判定');
+      expect(rule.tokenKey, isNotNull, reason: '123 必须配置 token 键名');
+      expect(rule.tokenJsExpression, isNotNull, reason: '需要从 localStorage 取值');
+      // 有 token 即登录成功
+      expect(rule.isLoginSuccess({rule.tokenKey!: 'jwt-value'}), isTrue);
+      // 空凭证不算
+      expect(rule.isLoginSuccess(const {}), isFalse);
     });
 
     test('免登录且无判定名的平台：抓到任意 Cookie 即算', () {

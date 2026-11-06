@@ -36,6 +36,7 @@ class _LoginPageState extends State<LoginPage> {
   double _progress = 0;
   bool _saving = false;
   String? _error;
+  InAppWebViewController? _controller;
 
   Future<void> _finish() async {
     if (_saving) return;
@@ -51,9 +52,30 @@ class _LoginPageState extends State<LoginPage> {
           if (c.value != null) c.name: c.value!,
       };
 
+      // ★ 登录态在 localStorage 的平台（如 123 云盘的 authorToken）：
+      //   页面里执行一次 JS 取值，作为凭证的一部分存起来。
+      final jsExpr = widget.rule.tokenJsExpression;
+      final tokenKey = widget.rule.tokenKey;
+      if (jsExpr != null && tokenKey != null && _controller != null) {
+        try {
+          // Windows 实现的方法名是 evaluateJavascript（小写 s）
+          final raw = await _controller!.evaluateJavascript(source: jsExpr);
+          final token = raw
+              ?.toString()
+              .replaceAll('"', '')
+              .replaceAll("'", '')
+              .trim();
+          if (token != null && token.isNotEmpty && token != 'null') {
+            map[tokenKey] = token;
+          }
+        } catch (_) {
+          // 取不到 token 时继续走 Cookie 判定
+        }
+      }
+
       if (!widget.rule.isLoginSuccess(map)) {
         setState(() => _error =
-            '未检测到登录态（需要的关键 Cookie 不在）。请在页面里完成登录后再点「完成」。');
+            '未检测到登录态。请在页面里完成登录后再点「完成」。');
         return;
       }
 
@@ -112,6 +134,7 @@ class _LoginPageState extends State<LoginPage> {
             Expanded(
               child: InAppWebView(
                 webViewEnvironment: widget.environment,
+                onWebViewCreated: (c) => _controller = c,
                 initialUrlRequest: URLRequest(url: WebUri(widget.rule.loginUrl)),
                 initialSettings: InAppWebViewSettings(
                   javaScriptEnabled: true,

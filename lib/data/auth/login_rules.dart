@@ -23,6 +23,13 @@ class LoginRule {
   /// 是否必须登录才能使用该平台解析。
   final bool required;
 
+  /// 登录态不在 Cookie 里的平台（如 123 云盘的 token 存 localStorage）：
+  /// 填入取值用的 JS 表达式，登录完成时执行一次。
+  final String? tokenJsExpression;
+
+  /// token 存入 [ParseContext.cookies] 时使用的键名。
+  final String? tokenKey;
+
   const LoginRule({
     required this.platformId,
     required this.displayName,
@@ -31,10 +38,15 @@ class LoginRule {
     required this.cookieUrl,
     this.successCookieNames = const [],
     this.required = true,
+    this.tokenJsExpression,
+    this.tokenKey,
   });
 
-  /// 从捕获到的 cookie 中判定是否登录成功。
+  /// 从捕获到的 cookie（含 token）中判定是否登录成功。
   bool isLoginSuccess(Map<String, String> cookies) {
+    // localStorage token 优先：有 token 就算登录成功（如 123 云盘）
+    final tk = tokenKey;
+    if (tk != null && (cookies[tk]?.isNotEmpty ?? false)) return true;
     if (successCookieNames.isEmpty) return cookies.isNotEmpty;
     return successCookieNames.any((name) =>
         cookies.keys.any((k) => k.toLowerCase() == name.toLowerCase()));
@@ -64,10 +76,13 @@ const Map<String, LoginRule> kLoginRules = {
   'pan123': LoginRule(
     platformId: 'pan123',
     displayName: '123 云盘',
-    loginUrl: 'https://www.123pan.com/',
-    cookieUrl: 'https://www.123pan.com/',
-    successCookieNames: ['passport', 'userInfo'],
-    required: false, // 免登录分享可解析；登录后可取更大文件/更快直链
+    loginUrl: 'https://yun.123pan.cn/',
+    cookieUrl: 'https://yun.123pan.cn/',
+    successCookieNames: [],
+    required: false, // 分享列表免登录；登录后才能取下载直链 / 浏览自己文件
+    // ★ 123 的登录态是 localStorage 里的 authorToken，不是 Cookie
+    tokenJsExpression: "localStorage.getItem('authorToken')",
+    tokenKey: '__pan123_token',
   ),
   'douyin': LoginRule(
     platformId: 'douyin',
