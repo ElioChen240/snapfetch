@@ -163,6 +163,11 @@ final tasksTickProvider = StateProvider<int>((_) => 0);
 /// 供页面间跳转使用（如解析失败后「去账号页重新登录」）。
 final navIndexProvider = StateProvider<int>((_) => 0);
 
+/// 启动时从命令行带进来的分享链接（`SnapFetch.exe "https://pan.quark.cn/s/x"`）。
+/// 非空时解析页自动回填并直接解析 —— 让「打开方式 → 闪取」有实际意义。
+/// 默认空串：正常双击启动时行为与以前完全一致。
+final startupLinkProvider = Provider<String>((_) => '');
+
 /// 收藏仓库（收藏链接，对应原版书签功能）。
 final bookmarkRepoProvider = FutureProvider<BookmarkRepository>((ref) async {
   final dir = await ref.watch(appDirProvider.future);

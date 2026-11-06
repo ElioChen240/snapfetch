@@ -63,6 +63,21 @@ class _ParsePageState extends ConsumerState<ParsePage> {
   ParseUiState _state = const ParseIdle();
 
   @override
+  void initState() {
+    super.initState();
+    // 命令行带链接启动（右键「打开方式」/ 浏览器调用）：回填并直接解析。
+    // startupLinkProvider 默认空串，正常双击启动时行为完全不变。
+    final link = ref.read(startupLinkProvider);
+    if (link.isNotEmpty) {
+      _input.text = link;
+      // 等首帧再解析：此时 Provider 与输入控制器都已就绪
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _parse();
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _input.dispose();
     _passcode.dispose();
@@ -503,7 +518,7 @@ class _ParsePageState extends ConsumerState<ParsePage> {
                   maxLines: 3,
                   style: theme.textTheme.bodyMedium,
                   decoration: InputDecoration(
-                    hintText: '例子：https://pan.quark.cn/s/xxxx 或分享口令',
+                    hintText: '例子：https://pan.quark.cn/s/xxxx（整段分享文案也可以）',
                     border: const OutlineInputBorder(),
                     isDense: true,
                     contentPadding:
@@ -623,7 +638,7 @@ class _ParsePageState extends ConsumerState<ParsePage> {
         return const EmptyState(
           icon: Icons.link,
           title: '粘贴分享链接，直接高速下载',
-          description: '粘贴夸克 / UC / 123 云盘分享链接，直接高速下载',
+          description: '支持夸克 / UC / 123 云盘 · 自动识别提取码',
         );
       case ParseLoading():
         return const Center(child: CircularProgressIndicator());

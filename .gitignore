@@ -63,3 +63,6 @@ packaging/*.exe
 
 # 平台官方图标（注册商标）：由 tools/fetch-platform-icons.ps1 本机获取，不入库
 assets/icons/platforms/*.png
+
+# 截图模式的临时输出目录（正式截图进 docs/images/）
+.shots/

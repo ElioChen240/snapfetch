@@ -43,8 +43,10 @@ class _AccountsPageState extends ConsumerState<AccountsPage> {
   Future<void> _init() async {
     try {
       final dir = await ref.read(appDirProvider.future);
-      final vault = DpapiFileCredentialVault(
-          File('${dir.path}${Platform.pathSeparator}credentials.bin'));
+      // ★ 凭证库统一走 vaultProvider：此前这里自己 new 了一个
+      //   DpapiFileCredentialVault，与解析上下文用的那份是两套路径逻辑，
+      //   既重复又没法在测试/截图模式替换。
+      final vault = await ref.read(vaultProvider.future);
 
       // WebView2 环境：userDataFolder 收敛在应用数据目录，Cookie 即登录态，跨登录复用
       String? webViewProblem;
@@ -279,8 +281,8 @@ class _AccountStatView extends ConsumerWidget {
       v /= 1024;
       i++;
     }
-    // 整数就不带小数（672 MB 比 672.0 MB 干净）
-    final s = v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
-    return '$s ${units[i]}';
+    // 与手机版一致：容量一律一位小数（10.0 GB 而不是 10 GB），
+    // 免得同一行里「672.0 MB / 10 GB」两种精度混着看很难受。
+    return i == 0 ? '${v.toStringAsFixed(0)} ${units[i]}' : '${v.toStringAsFixed(1)} ${units[i]}';
   }
 }

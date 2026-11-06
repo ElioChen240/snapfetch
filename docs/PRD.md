@@ -61,7 +61,8 @@
 | 10 | 收藏夹 | ✅ |
 | 11 | 解析历史 | ✅ |
 | 12 | 设置（主题 / 并发 / 目录 / 免转存 / 关于） | ✅ |
-| 13 | 视频平台解析（抖音 / 小红书） | ❌ 已下架（见 §10 D5） |
+| 13 | 命令行 / 「打开方式」传入链接自动解析 | ✅ |
+| 14 | 视频平台解析（抖音 / 小红书） | ❌ 已下架（见 §10 D5） |
 
 ### 4.4 明确不做
 
@@ -149,7 +150,8 @@ UI 不为具体平台写分支，只认这两种形态。
 
 - [ ] `pubspec.yaml` / `lib/core/app_info.dart` 版本一致（CI 有测试把关）
 - [ ] CHANGELOG 对应版本段落已写
-- [ ] `docs/images/` 截图为当前界面（旧截图会误导用户）
+- [ ] 文档截图用 `SnapFetch.exe --snapshot=docs/images` 重新导出
+      （应用真实渲染，非样机图；flutter test 的 golden 会把中文渲染成豆腐块，不能用）
 - [ ] 分发包内**不含** `assets/icons/platforms/*.png`（打包脚本已剔除）
 - [ ] 分发包内不含任何运行时数据（`SnapFetch-data` / `*.WebView2` / `downloads`）
 - [ ] CI 全绿，tag `v*` 触发 Release 并自动挂产物 + sha256

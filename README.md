@@ -8,7 +8,16 @@
 [![Release](https://img.shields.io/badge/release-v0.2.0-green)](https://github.com/ElioChen240/snapfetch/releases/latest)
 [![Changelog](https://img.shields.io/badge/更新日志-CHANGELOG-lightgrey)](./CHANGELOG.md)
 
-![解析](docs/images/parse.png)
+![解析结果](docs/images/parse_result.png)
+
+| 账号（登录后显示昵称与容量） | 下载（分片进度 / 续传） | 设置（免转存开关） |
+| --- | --- | --- |
+| ![账号](docs/images/accounts.png) | ![下载](docs/images/downloads.png) | ![设置](docs/images/settings.png) |
+
+> 上面这些图不是手画的样机图，是应用自己渲染导出的：
+> `SnapFetch.exe --snapshot=docs/images` 会用**真实外壳 + 真实字体**
+> 逐页输出 PNG（见 `lib/dev/snapshot_mode.dart`）。改了界面重跑一次就更新，
+> 文档截图不会再停留在三个月前的样子。
 
 ## 功能
 
@@ -16,6 +25,8 @@
 - 粘贴网盘分享链接（整段文案、带提取码均可），自动识别平台
 - 独立提取码输入框（链接里没带提取码时手动补），支持从剪贴板一键粘贴
 - 收藏夹：主动存下的链接；解析历史：自动记录每次解析（含失败原因），点击可复用
+- 也可以把链接直接交给程序：`SnapFetch.exe "https://pan.quark.cn/s/xxxx"`
+  （右键「打开方式 → 闪取」即可自动回填并解析）
 - 网盘：夸克、UC、123 云盘
 - 只做网盘：视频平台解析（抖音 / 小红书）已下架
 
