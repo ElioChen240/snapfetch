@@ -112,9 +112,9 @@ CI（`.github/workflows/build-windows.yml`）：
    正式分发前购买 OV/EV 代码签名；初期可在 README 说明「被拦截请选允许」。
 2. **静默安装**：`SnapFetch-setup.exe /VERYSILENT`（Inno 标准参数）。
 3. **卸载保留用户数据**（防误删凭证），彻底清除需手动删目录。
-4. **视频/音频在线预览暂无入口**：随抖音/小红书下架失去数据源。
-   是否拆掉 `media_kit`（`libmpv-2.dll` 单文件约 29 MB，占当前包体 37%）待定；
-   拆掉后 zip 预计降到约 20 MB。
+4. **media_kit 保留**（`libmpv-2.dll` 约 29 MB，占包体最大一块）：
+   用途是解析结果里的视频/音频在线播放。若哪天再砍视频功能，必须同时砍掉它，
+   否则就是白占 29 MB 的死重量。
 5. **本机无法完整验证 clean-clone 构建**：本地缺 `nuget` CLI，
    `flutter_inappwebview_windows` 拉取 WebView2 SDK 的构建步骤会失败
    （GitHub runner 预装，不受影响）。因此**发布以 CI 绿为准**，不以本地构建为准。

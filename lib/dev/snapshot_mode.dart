@@ -134,8 +134,7 @@ List<Override> _parseResult() => [
           (_) => 'https://pan.quark.cn/s/8a3f1c7d2b 提取码: 7g2k'),
     ];
 
-List<Override> _accounts() => [
-      ..._baseOverrides(),
+List<Override> _accounts() => [      ..._baseOverrides(),
       navIndexProvider.overrideWith((_) => 2),
     ];
 
@@ -153,9 +152,16 @@ List<Override> _settings() => [
       navIndexProvider.overrideWith((_) => 3),
     ];
 
+List<Override> _videoResult() => [
+      ..._baseOverrides(),
+      registryProvider.overrideWith((_) => ParserRegistry()..register(_SnapshotVideoParser())),
+      startupLinkProvider.overrideWith((_) => 'https://v.douyin.com/iAbcD/'),
+    ];
+
 final _scenes = <_Scene>[
   const _Scene('parse.png', _parseIdle),
   const _Scene('parse_result.png', _parseResult),
+  const _Scene('parse_media.png', _videoResult),
   const _Scene('accounts.png', _accounts),
   const _Scene('downloads.png', _downloads),
   const _Scene('settings.png', _settings),
@@ -260,6 +266,44 @@ class _SnapshotParser extends LinkParser {
 }
 
 ParserRegistry _registry() => ParserRegistry()..register(_SnapshotParser());
+
+/// 假视频解析器：产出「媒体集」形态，用来证明视频链路 + 播放入口都在。
+/// 只给视频条目（不给图片）：图片缩略图会真的去联网加载，
+/// 截图里会出现加载失败的样子，反而误导。
+class _SnapshotVideoParser extends LinkParser {
+  @override
+  String get id => 'douyin';
+  @override
+  String get displayName => '抖音';
+  @override
+  PlatformKind get kind => PlatformKind.video;
+  @override
+  bool get requiresAuth => false;
+  @override
+  bool matches(String input) => input.contains('v.douyin.com');
+
+  @override
+  Future<ParseResult> parse(String input, ParseContext ctx) async => MediaSetResult(
+        title: '【官方】这部电影值得二刷',
+        author: '示例作者',
+        items: [
+          MediaItem(
+            url: 'https://example.com/snapshot/original.mp4',
+            kind: MediaKind.video,
+            qualityLabel: '原画（无水印）',
+            size: 28 * 1024 * 1024,
+            headers: const {'Referer': 'https://www.douyin.com/'},
+          ),
+          MediaItem(
+            url: 'https://example.com/snapshot/720p.mp4',
+            kind: MediaKind.video,
+            qualityLabel: '720p',
+            size: 14 * 1024 * 1024,
+            headers: const {'Referer': 'https://www.douyin.com/'},
+          ),
+        ],
+      );
+}
 
 Future<ParseHistoryStore> _history() async {
   final s = MemoryParseHistoryStore();

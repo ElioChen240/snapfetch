@@ -14,7 +14,7 @@
 | 技术栈 | Flutter 3.44 / Dart 3.12（用户指定） |
 | 登录 | 应用内嵌浏览器登录（WebView2），手贴 Cookie 兜底 |
 | 功能基准 | **照官方版一模一样**（PRD §4.1 的 13 项），不自行加戏 |
-| 平台范围 | 夸克 / UC / 123 云盘（只做网盘；视频平台解析已下架，不再扩到官方全量） |
+| 平台范围 | 夸克 / UC / 123 云盘 + 抖音 / 小红书（视频解析已恢复并接上在线播放） |
 | 协议 | AGPL-3.0；自用 + GitHub 公开开源 |
 | 核心红线 | C1 解析 → C2 分片下载 → C3 免客户端直取，任何版本不得断链（PRD §2.1） |
 
@@ -45,7 +45,7 @@ lib/
 │   ├── entities.dart         FileNode / MediaItem / 账号 / 设置实体
 │   └── usecases.dart         ParseLink / EnqueueDownload / RestoreQueue
 ├── data/
-│   ├── parsers/              ★ 每平台一个文件（quark / uc / pan123）
+│   ├── parsers/              ★ 每平台一个文件（quark / uc / pan123 / douyin / xhs）
 │   ├── network/
 │   │   ├── http_client.dart   dio 单例 + 拦截器（UA/Referer/Cookie/代理/重试）
 │   │   └── cookie_store.dart  凭证读写
@@ -262,6 +262,8 @@ M2 改用 `win32` 包直接调 DPAPI 自写 `credential_vault`，零额外原生
 | `data/parsers/quark.dart` | token → 递归文件树（翻页）→ 按需取直链 |
 | `data/parsers/uc.dart` | 同族独立实现（域名/参数不同） |
 | `data/parsers/pan123.dart` | 免登录分享解析 |
+| `data/parsers/douyin.dart` | 短链跟随 → `_ROUTER_DATA` → 视频去水印（playwm→play）+ 图集 |
+| `data/parsers/xiaohongshu.dart` | `__INITIAL_STATE__`（裸 undefined 清洗）→ 图集（取最大变体）+ h264 视频流 |
 | `data/parsers/registry.dart` | 注册表（旧 `data/parsers.dart` 已删除） |
 | `test/parsers_test.dart` | **10 个 fixture 测试**：本地 HttpServer 按 path 动态返回（支持按父目录 ID 区分防递归），验证请求构造（签名参数/Referer/Cookie 注入）+ 响应解析全链路 |
 

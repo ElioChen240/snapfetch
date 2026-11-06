@@ -97,7 +97,7 @@ class _ParsePageState extends ConsumerState<ParsePage> {
     final parser = registry.route(url);
     if (parser == null) {
       setState(() => _state = const ParseFailed(
-          ParseError('未能识别链接所属平台（支持：夸克 / UC / 123 云盘）')));
+          ParseError('未能识别链接所属平台（支持：夸克 / UC / 123 云盘 / 抖音 / 小红书）')));
       return;
     }
     setState(() => _state = ParseLoading(input));
@@ -638,7 +638,7 @@ class _ParsePageState extends ConsumerState<ParsePage> {
         return const EmptyState(
           icon: Icons.link,
           title: '粘贴分享链接，直接高速下载',
-          description: '支持夸克 / UC / 123 云盘 · 自动识别提取码',
+          description: '支持夸克 / UC / 123 云盘，以及抖音 / 小红书 · 自动识别提取码',
         );
       case ParseLoading():
         return const Center(child: CircularProgressIndicator());
@@ -865,13 +865,26 @@ class _MediaGrid extends StatelessWidget {
                       child: Icon(Icons.play_circle_outline,
                           size: 40, color: theme.colorScheme.primary),
                     ),
-                  // 选中蒙层
+                  // ★ 选中态：只做轻着色 + 右上角小勾。
+                  //   以前在正中间画一个大对勾，会把视频卡片底下的「播放」图标
+                  //   整个盖掉 —— 默认全选时满屏都是对勾，看不出点卡片能在线播。
                   if (sel)
                     Container(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.35),
-                      alignment: Alignment.center,
-                      child: Icon(Icons.check_circle,
-                          size: 36, color: theme.colorScheme.onPrimary),
+                      color: theme.colorScheme.primary.withValues(alpha: 0.18),
+                    ),
+                  if (sel)
+                    Positioned(
+                      right: 4,
+                      top: 4,
+                      child: Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: const BoxDecoration(
+                          color: Colors.black54,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.check_circle,
+                            size: 20, color: theme.colorScheme.onPrimary),
+                      ),
                     ),
                   // 左上角勾选（独立于预览点击）
                   Positioned(

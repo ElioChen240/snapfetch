@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:snapfetch/core/crypto_vault.dart';
 import 'package:snapfetch/data/auth/credential_vault.dart';
 import 'package:snapfetch/data/auth/login_rules.dart';
+import 'package:snapfetch/domain/parser.dart';
 
 void main() {
   group('DpapiCrypto（Windows DPAPI）', () {
@@ -94,10 +95,20 @@ void main() {
   });
 
   group('LoginRules（红线 3：免登录不得强制登录）', () {
-    test('3 家网盘平台规则齐备', () {
-      expect(kLoginRules.keys, containsAll(['quark', 'uc', 'pan123']));
-      expect(kLoginRules.keys, hasLength(3),
-          reason: '抖音/小红书已下架：新增平台要同时补解析器、品牌与图标');
+    test('3 家网盘 + 2 家视频平台规则齐备', () {
+      expect(
+        kLoginRules.keys,
+        containsAll(['quark', 'uc', 'pan123', 'douyin', 'xiaohongshu']),
+      );
+      expect(kLoginRules.keys, hasLength(5));
+    });
+
+    test('视频平台必须免登录可用（红线 R1）', () {
+      for (final id in ['douyin', 'xiaohongshu']) {
+        expect(kLoginRules[id]!.required, isFalse,
+            reason: '$id 免登录即可直出直链，不能把登录做成前置条件');
+        expect(kLoginRules[id]!.kind, PlatformKind.video);
+      }
     });
 
     test('必登录平台的规则完整（URL + 成功判定）', () {

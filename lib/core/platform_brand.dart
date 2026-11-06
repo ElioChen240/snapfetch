@@ -41,6 +41,10 @@ const Map<String, PlatformBrand> kPlatformBrands = {
     mark: '123',
     logoAsset: 'assets/icons/platforms/pan123.png',
   ),
+  // 视频平台：官网没有可直接取的品牌图标，用自绘色块（黑底 + 青色描影
+  // 是抖音图标的观感，红色是小红书的品牌色），不涉及任何商标图形。
+  'douyin': PlatformBrand(color: Color(0xFF1B1B1F), mark: '抖'),
+  'xiaohongshu': PlatformBrand(color: Color(0xFFE8354F), mark: '红'),
 };
 
 /// 取品牌（未知平台回落到中性灰，保证 UI 不崩）。
