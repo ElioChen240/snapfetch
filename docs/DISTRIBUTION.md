@@ -8,8 +8,12 @@
 | 形态 | 文件 | 体积 | 说明 |
 | --- | --- | --- | --- |
 | **便携版** | `SnapFetch-<版本>-win64-portable.zip` | **34.2 MB** | 解压即用；内含 `使用说明.txt` + WebView2 引导器 + `*.sha256` |
-| **安装版** | `SnapFetch-<版本>-setup.exe` | 约 12~15 MB（lzma2/max） | 每用户安装、无需管理员、可卸载；保留用户数据 |
+| **安装版** | `SnapFetch-<版本>-setup.exe` | **26.7 MB** | 每用户安装、无需管理员、可卸载；保留用户数据 |
 | 原始产物 | `build\windows\x64\runner\Release\` | 79 MB（14 个 DLL） | CI artifact 备用 |
+
+以上为 2026-11-06 本机实测（Inno Setup 7，lzma2/max + SolidCompression）。
+setup.exe 的文件属性已写入版本/产品名/发布者（`VersionInfoVersion` 等），
+「属性 → 详细信息」不再是空的。
 
 对比：官方 Kotlin/Compose 桌面版便携包约 248 MB（含 JRE + CEF）。
 PRD §7 目标「便携版 < 150 MB」大幅达成。

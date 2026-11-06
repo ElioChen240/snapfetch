@@ -34,6 +34,13 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64compatible
 Uninstallable=yes
+; setup.exe 自身的文件属性：不写的话「属性→详细信息」里文件版本是空的，
+; 既不像正规软件，也容易触发杀软的启发式关注。
+VersionInfoVersion={#AppVersion}
+VersionInfoProductVersion={#AppVersion}
+VersionInfoProductName={#MyAppName}
+VersionInfoCompany={#MyAppPublisher}
+VersionInfoDescription={#MyAppName} 安装程序
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
