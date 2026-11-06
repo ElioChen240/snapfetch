@@ -23,11 +23,16 @@ class RangeDownloadEngine implements DownloadEngine {
   final TaskRepository repository;
   final int concurrency;
   final int maxRetries;
+  /// 同时下载的任务数上限
+  final int maxConcurrentTasks;
   final void Function(String message)? log;
 
   final StreamController<DownloadTask> _progressController =
       StreamController<DownloadTask>.broadcast();
   final Map<String, _Running> _running = {};
+
+  /// 排队中的任务（活跃任务数已达上限时暂存）
+  final List<DownloadTask> _pendingTasks = [];
 
   RangeDownloadEngine({
     required this.dio,
@@ -35,8 +40,13 @@ class RangeDownloadEngine implements DownloadEngine {
     this.planner = const ChunkPlanner(),
     this.concurrency = 8,
     this.maxRetries = 3,
+    /// 同时下载的任务数上限（原版默认 1，这里给 3 兼顾速度与连接数）
+    this.maxConcurrentTasks = 3,
     this.log,
   });
+
+  /// 当前活跃任务数
+  int get activeTaskCount => _running.length;
 
   @override
   Stream<DownloadTask> get progressStream => _progressController.stream;
@@ -56,16 +66,38 @@ class RangeDownloadEngine implements DownloadEngine {
 
   @override
   Future<void> enqueue(DownloadTask task) async {
-    if (_running.containsKey(task.id)) return;
+    if (_running.containsKey(task.id) ||
+        _pendingTasks.any((t) => t.id == task.id)) {
+      return; // 重复入队保护
+    }
     if (task.chunks.isEmpty) {
       await _prepare(task);
     }
+    // ★ 并发上限：勾选上百个文件时不能全部同时开下
+    if (_running.length >= maxConcurrentTasks) {
+      task.status = TaskStatus.queued;
+      _pendingTasks.add(task);
+      await repository.save(task);
+      _emit(task);
+      return;
+    }
+    _start(task);
+  }
+
+  void _start(DownloadTask task) {
     task.status = TaskStatus.running;
-    await repository.save(task);
     final run = _Running(task);
     _running[task.id] = run;
     _emit(task);
     unawaited(_execute(run));
+  }
+
+  /// 从排队队列取下一个启动（任务结束/取消时调用）。
+  void _startNextPending() {
+    if (_pendingTasks.isEmpty) return;
+    if (_running.length >= maxConcurrentTasks) return;
+    final next = _pendingTasks.removeAt(0);
+    _start(next);
   }
 
   /// 探测元信息并生成/复用固定分片规划。
@@ -189,6 +221,8 @@ class RangeDownloadEngine implements DownloadEngine {
       }
     } finally {
       _running.remove(task.id);
+      // ★ 释放并发槽位：拉起排队中的下一个任务
+      _startNextPending();
     }
   }
 
@@ -350,10 +384,15 @@ class RangeDownloadEngine implements DownloadEngine {
     final tasks = await repository.loadAll();
     final task = tasks.where((t) => t.id == taskId).firstOrNull;
     if (task == null) return;
-    // 用新 cancelToken 重跑，复用已持久化的分片 written
-    _running[taskId] = _Running(task);
-    task.status = TaskStatus.running;
-    unawaited(_execute(_running[taskId]!));
+    // 用新 cancelToken 重跑，复用已持久化的分片 written；同样遵守并发上限
+    if (_running.length >= maxConcurrentTasks) {
+      task.status = TaskStatus.queued;
+      _pendingTasks.add(task);
+      await repository.save(task);
+      _emit(task);
+      return;
+    }
+    _start(task);
   }
 
   @override
@@ -364,14 +403,34 @@ class RangeDownloadEngine implements DownloadEngine {
       run.cancelled = true;
       _running.remove(taskId);
     }
+    _pendingTasks.removeWhere((t) => t.id == taskId);
+
+    // ★ 顺序修正：必须先取出任务（拿 savePath）再删记录。
+    //   此前先 remove 再 loadAll 查，永远查不到 → deleteFile 静默失效。
+    final tasks = await repository.loadAll();
+    final task = tasks.where((t) => t.id == taskId).firstOrNull;
     await repository.remove(taskId);
-    if (deleteFile) {
-      final tasks = await repository.loadAll();
-      for (final t in tasks.where((t) => t.id == taskId)) {
-        final f = File(t.savePath);
-        if (await f.exists()) await f.delete();
+
+    if (deleteFile && task != null) {
+      final f = File(task.savePath);
+      if (await f.exists()) {
+        try {
+          await f.delete();
+        } catch (_) {
+          // 文件被占用时忽略：至少任务已移除
+        }
+      }
+      // 顺带清理可能残留的分片
+      for (final c in task.chunks) {
+        final part = File(_partPath(task.savePath, c.index));
+        if (await part.exists()) {
+          try {
+            await part.delete();
+          } catch (_) {}
+        }
       }
     }
+    _startNextPending();
   }
 
   void _emit(DownloadTask task) {

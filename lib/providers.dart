@@ -152,3 +152,7 @@ final parseContextFactoryProvider =
 
 /// 下载页任务列表刷新信号（engine 流之外的手动刷新点）。
 final tasksTickProvider = StateProvider<int>((_) => 0);
+
+/// 当前导航页索引（0=解析 1=下载 2=账号 3=设置）。
+/// 供页面间跳转使用（如解析失败后「去账号页重新登录」）。
+final navIndexProvider = StateProvider<int>((_) => 0);

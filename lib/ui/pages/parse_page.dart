@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:flutter/services.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -8,7 +10,9 @@ import '../../core/settings.dart';
 import '../../domain/parser.dart';
 import '../widgets/file_browser.dart';
 import '../theme/motion.dart';
+import '../widgets/auth_image.dart';
 import '../widgets/page_scaffold.dart';
+import 'media_preview_page.dart';
 import '../../providers.dart';
 
 /// 解析状态。
@@ -156,8 +160,26 @@ class _ParsePageState extends ConsumerState<ParsePage> {
           ? '已加入下载 $queued 个\n保存位置：$usedDir'
           : '已加入下载 $queued 个，失败 ${errors.length} 个\n${errors.take(2).join('\n')}'),
       duration: const Duration(seconds: 10),
-      action: SnackBarAction(label: '去下载页', onPressed: () {}),
+      action: SnackBarAction(
+        label: '去下载页',
+        onPressed: () => ref.read(navIndexProvider.notifier).state = 1,
+      ),
     ));
+  }
+
+  /// 从剪贴板读取并填入输入框（Flutter 自带 Clipboard，无需平台层）。
+  Future<void> _pasteFromClipboard() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text?.trim() ?? '';
+    if (text.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('剪贴板为空')));
+      }
+      return;
+    }
+    _input.text = text;
+    _input.selection = TextSelection.collapsed(offset: text.length);
   }
 
   String? _actualDirUsed;
@@ -230,9 +252,7 @@ class _ParsePageState extends ConsumerState<ParsePage> {
                     suffixIcon: IconButton(
                       icon: const Icon(Icons.content_paste, size: 18),
                       tooltip: '从剪贴板粘贴',
-                      onPressed: () async {
-                        // 剪贴板读取在平台层（M4.1）
-                      },
+                      onPressed: _pasteFromClipboard,
                     ),
                   ),
                   onSubmitted: (_) => _parse(),
@@ -318,7 +338,8 @@ class _ParsePageState extends ConsumerState<ParsePage> {
                 Padding(
                   padding: const EdgeInsets.only(top: 12),
                   child: FilledButton.tonal(
-                    onPressed: () {}, // 跳转账号页由外壳处理（M4.1）
+                    onPressed: () =>
+                        ref.read(navIndexProvider.notifier).state = 2,
                     child: const Text('去账号页重新登录'),
                   ),
                 ),
@@ -475,25 +496,62 @@ class _MediaGrid extends StatelessWidget {
         final item = media.items[i];
         final key = item.url;
         final sel = selected.contains(key);
+        final isImage = item.kind == MediaKind.image;
         return Card(
+          clipBehavior: Clip.antiAlias,
           child: InkWell(
-            onTap: () => onToggle(key),
+            // 点缩略图 → 预览；勾选用左上角复选框（避免和预览冲突）
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => MediaPreviewPage(
+                  item: item,
+                  title: media.title.isEmpty ? '预览' : media.title,
+                ),
+              ),
+            ),
             child: Column(children: [
               Expanded(
                 child: Stack(fit: StackFit.expand, children: [
-                  const Center(child: Icon(Icons.image_outlined)),
+                  // ★ 真实缩略图（带 Referer/Cookie，否则 403）
+                  if (isImage)
+                    AuthImage(url: item.url, headers: item.headers, fit: BoxFit.cover)
+                  else
+                    Container(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      alignment: Alignment.center,
+                      child: Icon(Icons.play_circle_outline,
+                          size: 40, color: theme.colorScheme.primary),
+                    ),
+                  // 选中蒙层
                   if (sel)
                     Container(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.25),
-                      child: const Icon(Icons.check_circle, size: 40),
+                      color: theme.colorScheme.primary.withValues(alpha: 0.35),
+                      alignment: Alignment.center,
+                      child: Icon(Icons.check_circle,
+                          size: 36, color: theme.colorScheme.onPrimary),
                     ),
+                  // 左上角勾选（独立于预览点击）
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: Checkbox(
+                        value: sel,
+                        onChanged: (_) => onToggle(key),
+                        fillColor: WidgetStatePropertyAll(
+                          sel ? theme.colorScheme.primary : Colors.white70,
+                        ),
+                      ),
+                    ),
+                  ),
                 ]),
               ),
               Padding(
                 padding: const EdgeInsets.all(6),
                 child: Text(
                   item.qualityLabel ??
-                      (item.kind == MediaKind.video ? '视频' : '图片'),
+                      (isImage ? '图片' : '视频'),
                   style: theme.textTheme.labelSmall,
                   overflow: TextOverflow.ellipsis,
                 ),

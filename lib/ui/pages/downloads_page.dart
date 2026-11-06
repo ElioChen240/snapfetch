@@ -83,7 +83,32 @@ class _DownloadsPageState extends ConsumerState<DownloadsPage> {
 
   Future<void> _delete(DownloadTask t) async {
     final engine = await ref.read(downloadEngineProvider.future);
-    await engine.cancel(t.id, deleteFile: false);
+    if (!mounted) return;
+    // 已完成的任务问一下是否连文件一起删（此前固定 false，文件永远残留）
+    var deleteFile = false;
+    if (t.status == TaskStatus.completed) {
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('删除任务'),
+          content: const Text('是否同时删除已下载的文件？'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, 'cancel'),
+                child: const Text('取消')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, 'task'),
+                child: const Text('仅删除任务')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, 'both'),
+                child: const Text('同时删除文件')),
+          ],
+        ),
+      );
+      if (choice == null || choice == 'cancel') return;
+      deleteFile = choice == 'both';
+    }
+    await engine.cancel(t.id, deleteFile: deleteFile);
     setState(() => _tasks.removeWhere((x) => x.id == t.id));
   }
 

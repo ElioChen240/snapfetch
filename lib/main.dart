@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:media_kit/media_kit.dart';
 
 import 'providers.dart';
 import 'ui/pages/accounts_page.dart';
@@ -11,6 +12,8 @@ import 'ui/theme/motion.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  // media_kit 全局初始化（视频/音频预览）。必须在 runApp 前。
+  MediaKit.ensureInitialized();
   // ★ 窗口尺寸/最小尺寸由 C++ runner 设置（windows/runner/main.cpp + win32_window.cpp）。
   //   不用 window_manager 的 waitUntilReadyToShow：它先隐藏窗口再等回调 show，
   //   回调异常/超时会让主窗口永久隐藏（实测踩坑）。
@@ -92,16 +95,17 @@ class _HomeShell extends ConsumerStatefulWidget {
 }
 
 class _HomeShellState extends ConsumerState<_HomeShell> {
-  int _index = 0;
-
   @override
   Widget build(BuildContext context) {
+    // 导航索引放在 provider 里：页面内部（如解析失败「去账号页」）也能跳转
+    final index = ref.watch(navIndexProvider);
+    void select(int i) => ref.read(navIndexProvider.notifier).state = i;
     return Scaffold(
       // ★ 桌面式布局：不用 AppBar（窗口标题栏已显示产品名，再叠一层大标题
       //   会挤占纵向空间、显得像手机 APP）。改为左侧固定宽度侧边栏 + 内容区。
       body: Row(
         children: [
-          _Sidebar(index: _index, onSelect: (i) => setState(() => _index = i)),
+          _Sidebar(index: index, onSelect: select),
           const VerticalDivider(width: 1, thickness: 1),
           Expanded(
             child: Column(
@@ -143,8 +147,8 @@ class _HomeShellState extends ConsumerState<_HomeShell> {
                       );
                     },
                     child: KeyedSubtree(
-                      key: ValueKey(_index),
-                      child: switch (_index) {
+                      key: ValueKey(index),
+                      child: switch (index) {
                         0 => const ParsePage(), // 解析 → 下载主链路
                         1 => const DownloadsPage(), // 任务管理
                         2 => const AccountsPage(), // 应用内登录
