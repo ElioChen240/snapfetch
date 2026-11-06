@@ -53,8 +53,9 @@ class LoginRule {
   }
 }
 
-/// 首批平台登录规则（PRD §10 D1）。
-/// 抖音 / 小红书免登录直出直链，required=false；
+/// 三家网盘的登录规则（PRD §10 D1）。
+/// 网盘分享解析都要登录态才能取直链，故 required 全为 true；
+/// 123 云盘例外：分享列表免登录可取，登录后才能取链/浏览自己的文件。
 /// Cookie 规则随平台改版更新 —— 只改这里，不动核心。
 const Map<String, LoginRule> kLoginRules = {
   'quark': LoginRule(
@@ -83,23 +84,5 @@ const Map<String, LoginRule> kLoginRules = {
     // ★ 123 的登录态是 localStorage 里的 authorToken，不是 Cookie
     tokenJsExpression: "localStorage.getItem('authorToken')",
     tokenKey: '__pan123_token',
-  ),
-  'douyin': LoginRule(
-    platformId: 'douyin',
-    kind: PlatformKind.video,
-    displayName: '抖音',
-    loginUrl: 'https://www.douyin.com/',
-    cookieUrl: 'https://www.douyin.com/',
-    successCookieNames: [],
-    required: false, // 免登录直出直链（PRD §5 第 3 项）
-  ),
-  'xiaohongshu': LoginRule(
-    platformId: 'xiaohongshu',
-    kind: PlatformKind.video,
-    displayName: '小红书',
-    loginUrl: 'https://www.xiaohongshu.com/',
-    cookieUrl: 'https://www.xiaohongshu.com/',
-    successCookieNames: [],
-    required: false, // 免登录直出直链 + 图集
   ),
 };

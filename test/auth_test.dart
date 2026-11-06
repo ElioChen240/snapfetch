@@ -94,11 +94,10 @@ void main() {
   });
 
   group('LoginRules（红线 3：免登录不得强制登录）', () {
-    test('首批 5 家平台全部注册', () {
-      expect(
-        kLoginRules.keys,
-        containsAll(['quark', 'uc', 'pan123', 'douyin', 'xiaohongshu']),
-      );
+    test('3 家网盘平台规则齐备', () {
+      expect(kLoginRules.keys, containsAll(['quark', 'uc', 'pan123']));
+      expect(kLoginRules.keys, hasLength(3),
+          reason: '抖音/小红书已下架：新增平台要同时补解析器、品牌与图标');
     });
 
     test('必登录平台的规则完整（URL + 成功判定）', () {

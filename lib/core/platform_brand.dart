@@ -1,37 +1,46 @@
 import 'dart:ui' show Color;
 
-/// 平台视觉标识（品牌色 + 单字徽记）。
+/// 平台视觉标识：官方图标（可选）+ 自绘徽记（兜底）。
 ///
-/// ★ 刻意**不使用各平台官方 logo 图形**（夸克蓝环、UC 松鼠、123 紫块等是注册商标，
-///   本项目是独立非官方实现，随开源分发会构成商标使用风险）。
-///   这里只用「品牌色底 + 平台首字」这种通用识别方式，功能上等价（一眼认出平台），
-///   法律上不复制他人 logo 图形。
+/// ★ 关于官方图标
+///   各平台 logo 是**注册商标**，本仓库不提交其图片文件
+///   （`assets/icons/platforms/*.png` 已在 .gitignore 内）。
+///   需要「手机版那种真实图标」时，在自己机器上跑一次
+///   `powershell -File tools/fetch-platform-icons.ps1`
+///   —— 它从各平台官网取图标；没取到（或没跑）就自动用下面
+///   自绘的「品牌色块 + 首字」兜底，功能与识别度等价，界面也不会崩。
 class PlatformBrand {
   final Color color;
 
-  /// 徽记文字：单字或 2 字符以内（渲染在色块中心）。
+  /// 徽记文字：单字或 2~3 字符（渲染在色块中心）。
   final String mark;
 
-  /// 次要色（抖音的双色描边等）；为 null 时不画。
-  final Color? accent;
+  /// 官方图标资源路径；null 或加载失败时用 [mark] 色块兜底。
+  final String? logoAsset;
 
   const PlatformBrand({
     required this.color,
     required this.mark,
-    this.accent,
+    this.logoAsset,
   });
 }
 
 const Map<String, PlatformBrand> kPlatformBrands = {
-  'quark': PlatformBrand(color: Color(0xFF1C63F7), mark: '夸'),
-  'uc': PlatformBrand(color: Color(0xFFE9762B), mark: 'U'),
-  'pan123': PlatformBrand(color: Color(0xFF6C4CF1), mark: '123'),
-  'douyin': PlatformBrand(
-    color: Color(0xFF1B1B1F),
-    mark: '抖',
-    accent: Color(0xFF25F4EE),
+  'quark': PlatformBrand(
+    color: Color(0xFF1C63F7),
+    mark: '夸',
+    logoAsset: 'assets/icons/platforms/quark.png',
   ),
-  'xiaohongshu': PlatformBrand(color: Color(0xFFE8354F), mark: '红'),
+  'uc': PlatformBrand(
+    color: Color(0xFF2B2B2F),
+    mark: 'U',
+    logoAsset: 'assets/icons/platforms/uc.png',
+  ),
+  'pan123': PlatformBrand(
+    color: Color(0xFF4E7BF2),
+    mark: '123',
+    logoAsset: 'assets/icons/platforms/pan123.png',
+  ),
 };
 
 /// 取品牌（未知平台回落到中性灰，保证 UI 不崩）。

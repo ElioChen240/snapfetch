@@ -82,7 +82,7 @@ class _ParsePageState extends ConsumerState<ParsePage> {
     final parser = registry.route(url);
     if (parser == null) {
       setState(() => _state = const ParseFailed(
-          ParseError('未能识别链接所属平台（支持：夸克/UC/123/抖音/小红书）')));
+          ParseError('未能识别链接所属平台（支持：夸克 / UC / 123 云盘）')));
       return;
     }
     setState(() => _state = ParseLoading(input));
@@ -623,7 +623,7 @@ class _ParsePageState extends ConsumerState<ParsePage> {
         return const EmptyState(
           icon: Icons.link,
           title: '粘贴分享链接，直接高速下载',
-          description: '支持夸克 / UC / 123 云盘，以及抖音 / 小红书',
+          description: '粘贴夸克 / UC / 123 云盘分享链接，直接高速下载',
         );
       case ParseLoading():
         return const Center(child: CircularProgressIndicator());

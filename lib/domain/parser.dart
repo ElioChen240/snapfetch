@@ -148,7 +148,7 @@ enum PlatformKind { netdisk, video }
 /// ★ 解析器插件接口（PRD §8.3）：新增平台 = 新增一个实现 + 注册，不动核心。
 abstract class LinkParser {
   const LinkParser();
-  String get id; // 'quark' / 'douyin' ...
+  String get id; // 'quark' / 'uc' / 'pan123' ...
   String get displayName; // '夸克网盘'
   PlatformKind get kind;
 

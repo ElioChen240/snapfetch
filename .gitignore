@@ -60,3 +60,6 @@ settings.json
 
 # 打包用二进制（CI/脚本自动下载）
 packaging/*.exe
+
+# 平台官方图标（注册商标）：由 tools/fetch-platform-icons.ps1 本机获取，不入库
+assets/icons/platforms/*.png
