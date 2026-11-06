@@ -1,0 +1,37 @@
+# 行尾与二进制策略：避免「我这台好使、你 clone 就坏」
+# 背景：本机 core.autocrlf=true，提交时反复出现 LF→CRLF 警告；
+# PowerShell 5.1 读带中文的 .ps1 还必须是 UTF-8 **带 BOM**，
+# 行尾被工具改写不会报错，但编码丢了就是乱码语法错误。
+
+* text=auto eol=lf
+
+# —— 必须以 LF 入库、检出也不改写的文本 ——
+*.dart          text eol=lf
+*.yaml          text eol=lf
+*.yml           text eol=lf
+*.json          text eol=lf
+*.md            text eol=lf
+*.css           text eol=lf
+*.js            text eol=lf
+
+# —— Windows 侧脚本/工程文件：保持 CRLF，别被转换 ——
+*.ps1           text crlf
+*.iss           text crlf
+*.rc            text crlf
+# 随安装包给用户的说明（记事本打开），用 CRLF 最稳
+*.txt           text crlf
+*.ico           binary
+*.png           binary
+*.woff2         binary
+
+# —— C/C++ 源文件用 LF（Flutter 模板即 LF）——
+*.c             text eol=lf
+*.cpp           text eol=lf
+*.h             text eol=lf
+
+# —— 生成物与产物不入库，这里只兜底 ——
+pubspec.lock    text eol=lf
+*.so            binary
+*.dll           binary
+*.exe           binary
+*.zip           binary
