@@ -83,6 +83,11 @@ class QuarkParser extends LinkParser implements CloudBrowser {
   }
 
   /// `quark-fid://<fid>|<fidToken>` → 换真直链
+  ///
+  /// ★ [ParseContext.noTransferDownload]（设置的「免转存下载」）：
+  ///   true  = 直接对分享文件取链（官方 getShareDownloadLinkWithoutSave，默认）；
+  ///   false = 先转存到「我的文件」根目录，再从自己的文件取链
+  ///           （个别分享文件免转存取不到链时，这条老路能兜住）。
   @override
   Future<String> resolveDirectUrl(ParseContext ctx, FileNode node) async {
     final url = node.directUrl;
@@ -95,7 +100,109 @@ class QuarkParser extends LinkParser implements CloudBrowser {
     final parts = url.substring(prefix.length).split('|');
     final fid = parts.isNotEmpty ? parts[0] : '';
     final fidToken = parts.length > 1 ? parts[1] : '';
-    return getDownloadUrl(ctx, fid: fid, fidToken: fidToken);
+
+    if (ctx.noTransferDownload) {
+      return getDownloadUrl(ctx, fid: fid, fidToken: fidToken);
+    }
+    return _saveThenGetUrl(ctx,
+        fid: fid, fidToken: fidToken, fileName: node.name);
+  }
+
+  /// 转存再下载：save 分享文件 → 轮询任务 → 用保存后的 fid 取链。
+  Future<String> _saveThenGetUrl(
+    ParseContext ctx, {
+    required String fid,
+    required String fidToken,
+    required String fileName,
+  }) async {
+    if (!ctx.hasCredential) {
+      throw const ParseError('夸克: 关闭「免转存下载」需要登录账号（要往你的网盘里转存）',
+          kind: ParseErrorKind.credentialExpired);
+    }
+    final shareId = _lastShareId;
+    final stoken = _lastStoken;
+    if (shareId == null || stoken == null) {
+      throw const ParseError('夸克: 缺少分享上下文，请重新解析链接',
+          kind: ParseErrorKind.credentialExpired);
+    }
+
+    final res = await _signedPost(ctx, '$_base/share/sharepage/save',
+        jsonBody: {
+          'fid_list': [fid],
+          'fid_token_list': [fidToken],
+          'to_pdir_fid': '0', // 我的文件根目录
+          'pwd_id': shareId,
+          'stoken': stoken,
+          'pdir_fid': '0',
+          'scene': 'link',
+        },
+        timestampSec: DateTime.now().millisecondsSinceEpoch ~/ 1000);
+    final map = ParseUtils.expectOk(
+        ParseUtils.json(res.body, platform: displayName), displayName);
+    final data = (map['data'] as Map?) ?? const {};
+    final taskId = data['task_id'] as String?;
+
+    // 轮询转存任务（官方 /task），最多约 6 秒
+    var savedFid = _findSavedFid(data);
+    if (savedFid == null && taskId != null && taskId.isNotEmpty) {
+      for (var i = 0; i < 12 && savedFid == null; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        final r = await ctx.httpGet(
+          Uri.parse('$_base/task').replace(queryParameters: {
+            ..._commonQuery,
+            'task_id': taskId,
+            'retry_index': '$i',
+          }).toString(),
+          headers: ParseUtils.jsonHeaders(referer: _referer),
+        );
+        final m = ParseUtils.json(r.body, platform: displayName) as Map;
+        final d = (m['data'] as Map?) ?? const {};
+        savedFid = _findSavedFid(d);
+      }
+    }
+
+    // 任务响应里没给 fid：按文件名在根目录里找（重名时取最新一个）
+    savedFid ??= await _findFidByNameInRoot(ctx, fileName);
+    if (savedFid == null) {
+      // 兜底回免转存：转存链路失败不该让用户完全下不了
+      ctx.log('夸克: 转存后未定位到文件，回退免转存取链');
+      return getDownloadUrl(ctx, fid: fid, fidToken: fidToken);
+    }
+    return _requestDownloadUrl(ctx, body: {
+      'fids': [savedFid],
+      'action_type': 1,
+    });
+  }
+
+  /// 从 save/task 响应里捞保存后的 fid（字段名各版本略有差异，逐个试）。
+  String? _findSavedFid(Map data) {
+    final direct = data['fid'] as String?;
+    if (direct != null && direct.isNotEmpty) return direct;
+    final saveAs = data['save_as'];
+    if (saveAs is Map) {
+      final top = saveAs['save_as_top_fids'];
+      if (top is List && top.isNotEmpty) return top.first as String?;
+    }
+    final list = data['list'];
+    if (list is List && list.isNotEmpty && list.first is Map) {
+      return (list.first as Map)['fid'] as String?;
+    }
+    return null;
+  }
+
+  /// 在我的文件根目录按名字找 fid。
+  Future<String?> _findFidByNameInRoot(ParseContext ctx, String name) async {
+    try {
+      final nodes = await listMyFiles(ctx);
+      final hits = nodes.where((n) => n.name == name).toList();
+      if (hits.isEmpty) return null;
+      final f = hits.first.directUrl;
+      return (f != null && f.startsWith('quark-cloud-fid://'))
+          ? f.substring('quark-cloud-fid://'.length)
+          : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   String? _extractShareId(String input) {

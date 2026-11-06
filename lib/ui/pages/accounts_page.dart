@@ -9,6 +9,7 @@ import '../../data/auth/login_rules.dart';
 import '../../domain/parser.dart';
 import '../../providers.dart';
 import '../widgets/page_scaffold.dart';
+import '../widgets/platform_logo.dart';
 import 'cloud_drive_page.dart';
 import 'login_page.dart';
 
@@ -175,15 +176,19 @@ class _AccountsPageState extends ConsumerState<AccountsPage> {
       child: ListTile(
         // ★ 已登录的网盘：点击卡片进入「云盘浏览」（对齐官方「网盘」页）
         onTap: loggedIn ? () => _openDrive(rule, accounts.first) : null,
-        leading: Icon(
-          rule.required ? Icons.lock_outline : Icons.lock_open,
-          color: rule.required
-              ? theme.colorScheme.primary
-              : theme.colorScheme.outline,
-        ),
         title: Row(
           children: [
+            PlatformLogo(platformId: rule.platformId, size: 34),
+            const SizedBox(width: 10),
             Text(rule.displayName),
+            const SizedBox(width: 8),
+            Icon(
+              rule.required ? Icons.lock_outline : Icons.lock_open,
+              size: 15,
+              color: rule.required
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.outline,
+            ),
             if (loggedIn) ...[
               const SizedBox(width: 8),
               Text('点击浏览文件',
@@ -195,10 +200,14 @@ class _AccountsPageState extends ConsumerState<AccountsPage> {
             ],
           ],
         ),
-        subtitle: accounts.isEmpty
-            ? Text(rule.required ? '未登录 · 解析需登录' : '免登录可用',
-                style: theme.textTheme.bodySmall)
-            : Wrap(
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (accounts.isEmpty)
+              Text(rule.required ? '未登录 · 解析需登录' : '免登录可用',
+                  style: theme.textTheme.bodySmall)
+            else
+              Wrap(
                 spacing: 6,
                 children: [
                   for (final a in accounts)
@@ -208,11 +217,70 @@ class _AccountsPageState extends ConsumerState<AccountsPage> {
                     ),
                 ],
               ),
+            // 网盘账号：昵称 + 容量条（对齐手机版夸克卡片）
+            if (loggedIn) _AccountStatView(platformId: rule.platformId),
+          ],
+        ),
         trailing: FilledButton.tonal(
           onPressed: _env == null ? null : () => _startLogin(rule),
           child: Text(accounts.isEmpty ? '登录' : '添加'),
         ),
       ),
     );
+  }
+}
+
+/// 账号概览：昵称 + 「已用 x / 总量」容量进度条。
+///
+/// 只在登录态下请求；拉不到（接口改版/网络问题）就整块不显示，不留空占位。
+class _AccountStatView extends ConsumerWidget {
+  final String platformId;
+
+  const _AccountStatView({required this.platformId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final stat = ref.watch(accountStatProvider(platformId));
+    final s = stat.value;
+    if (s == null) return const SizedBox(height: 2);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6, right: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (s.nickname != null)
+            Text(s.nickname!, style: theme.textTheme.titleSmall),
+          if (s.used != null && s.total != null) ...[
+            const SizedBox(height: 4),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: (s.ratio ?? 0).clamp(0.0, 1.0),
+                minHeight: 4,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text('已用 ${_fmt(s.used!)} / ${_fmt(s.total!)}',
+                style: theme.textTheme.labelSmall
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  static String _fmt(int bytes) {
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    var v = bytes.toDouble();
+    var i = 0;
+    while (v >= 1024 && i < units.length - 1) {
+      v /= 1024;
+      i++;
+    }
+    // 整数就不带小数（672 MB 比 672.0 MB 干净）
+    final s = v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1);
+    return '$s ${units[i]}';
   }
 }

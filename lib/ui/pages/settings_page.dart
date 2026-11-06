@@ -109,6 +109,26 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ),
           const Divider(),
+          // 免转存下载（对齐手机版夸克设置项）
+          SwitchListTile(
+            secondary: const Icon(Icons.save_alt_outlined),
+            title: const Text('免转存下载'),
+            subtitle: const Text('夸克：解析出直链后直接下载，不把文件转存到自己的网盘\n'
+                '关闭后改为「先转存到我的网盘根目录，再下载」（需已登录）'),
+            value: settings.noTransferDownload,
+            onChanged: (v) async {
+              final messenger = ScaffoldMessenger.of(context);
+              await settings.setNoTransferDownload(v);
+              if (!mounted) return;
+              setState(() {});
+              messenger.showSnackBar(SnackBar(
+                content: Text(v
+                    ? '已开启免转存：解析到直链直接下载'
+                    : '已关闭免转存：下载前先转存到你的网盘'),
+              ));
+            },
+          ),
+          const Divider(),
           // 关于：一行入口 + 对话框，不占页面空间、不堆文字
           ListTile(
             leading: const Icon(Icons.info_outline),

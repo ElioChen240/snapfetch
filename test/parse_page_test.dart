@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:snapfetch/core/parse_history.dart';
 import 'package:snapfetch/core/settings.dart';
 import 'package:snapfetch/data/download/download_engine.dart';
 import 'package:snapfetch/data/download/task_repository.dart';
@@ -97,6 +98,8 @@ void main() {
       registryProvider.overrideWith((_) => ParserRegistry()..register(const _FakeParser())),
       parseContextFactoryProvider.overrideWith((_) => (_) async => _fakeCtx()),
       settingsProvider.overrideWith((_) async => _MemSettings()),
+      // 解析成功会自动记历史：内存实现，避免 FakeAsync 下真实 IO 挂起
+      historyRepoProvider.overrideWith((_) async => MemoryParseHistoryStore()),
       downloadEngineProvider.overrideWith(
           (_) async => RangeDownloadEngine(dio: SnapHttp.dio, repository: _MemRepo())),
     ]);
@@ -155,5 +158,89 @@ void main() {
     await tester.pump();
     expect(find.textContaining('4 / 145 已选'), findsOneWidget,
         reason: '取消整个目录应只剩根目录 4 个文件');
+  });
+
+  testWidgets('解析成功后：自动记历史 + 未登录提示（游客小文件可直下）',
+      (WidgetTester tester) async {
+    final history = MemoryParseHistoryStore();
+    final container = ProviderContainer(overrides: [
+      registryProvider.overrideWith((_) => ParserRegistry()..register(const _FakeParser())),
+      parseContextFactoryProvider.overrideWith((_) => (_) async => _fakeCtx()),
+      settingsProvider.overrideWith((_) async => _MemSettings()),
+      historyRepoProvider.overrideWith((_) async => history),
+      downloadEngineProvider.overrideWith(
+          (_) async => RangeDownloadEngine(dio: SnapHttp.dio, repository: _MemRepo())),
+    ]);
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const MaterialApp(home: Scaffold(body: ParsePage())),
+    ));
+    await tester.pump();
+
+    await tester.enterText(find.byType(TextField).first, 'https://pan.quark.cn/s/abc');
+    await tester.tap(find.widgetWithText(FilledButton, '解析'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    // ★ 自动记一条历史（含结果概要），按钮角标显示条数
+    final entries = await history.all();
+    expect(entries, hasLength(1));
+    expect(entries.single.ok, isTrue);
+    expect(entries.single.summary, contains('145 个文件'),
+        reason: '概要应写明文件数，便于回看');
+    expect(find.text('历史'), findsOneWidget);
+    await tester.pump();
+    expect(find.text('1'), findsWidgets, reason: '历史按钮角标应为 1');
+
+    // ★ 未登录（无 Cookie）解析网盘 → 提示游客限制，而不是静默失败
+    expect(find.textContaining('未登录解析'), findsOneWidget);
+  });
+
+  testWidgets('历史入口：打开列表并回填链接', (WidgetTester tester) async {
+    final history = MemoryParseHistoryStore();
+    await history.record(ParseHistoryEntry(
+      id: 'h1',
+      url: 'https://pan.quark.cn/s/OLD',
+      passcode: '9k2d',
+      platformId: 'fake',
+      platformName: '测试网盘',
+      summary: '1 个文件',
+      ok: true,
+      at: DateTime.now(),
+    ));
+    final container = ProviderContainer(overrides: [
+      registryProvider.overrideWith((_) => ParserRegistry()..register(const _FakeParser())),
+      parseContextFactoryProvider.overrideWith((_) => (_) async => _fakeCtx()),
+      settingsProvider.overrideWith((_) async => _MemSettings()),
+      historyRepoProvider.overrideWith((_) async => history),
+      downloadEngineProvider.overrideWith(
+          (_) async => RangeDownloadEngine(dio: SnapHttp.dio, repository: _MemRepo())),
+    ]);
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const MaterialApp(home: Scaffold(body: ParsePage())),
+    ));
+    await tester.pump();
+
+    await tester.tap(find.text('历史'));
+    await tester.pump();
+    expect(find.text('解析历史'), findsOneWidget);
+    expect(find.textContaining('https://pan.quark.cn/s/OLD'), findsOneWidget);
+
+    // 点条目 → 回填输入框并立即重新解析
+    await tester.tap(find.textContaining('https://pan.quark.cn/s/OLD').first);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('https://pan.quark.cn/s/OLD'), findsWidgets);
+    final passcodeField = tester
+        .widgetList<TextField>(find.byType(TextField))
+        .elementAt(1)
+        .controller!
+        .text;
+    expect(passcodeField, '9k2d', reason: '历史里的提取码应一并回填');
   });
 }

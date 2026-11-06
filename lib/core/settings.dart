@@ -14,9 +14,14 @@ abstract class AppSettings {
   /// 界面据此提示「设置已生效，但无法保存到磁盘」。
   bool get saveFailed;
 
+  /// 免转存下载（夸克/UC）：解析出直链后直接下载，不转存进自己的网盘。
+  /// 默认开；关闭后走「先转存到我的文件，再下载」。
+  bool get noTransferDownload => true;
+
   Future<void> setDownloadDir(String dir);
   Future<void> setConcurrency(int v);
   Future<void> setThemeMode(ThemeMode mode);
+  Future<void> setNoTransferDownload(bool value) async {}
 
   /// 实际生效的下载目录。
   ///
@@ -63,6 +68,7 @@ class JsonAppSettings extends AppSettings {
   static const _kDownloadDir = 'download_dir';
   static const _kConcurrency = 'concurrency';
   static const _kThemeMode = 'theme_mode';
+  static const _kNoTransfer = 'no_transfer_download';
 
   Future<Map<String, dynamic>> _load() async {
     if (_cache != null) return _cache!;
@@ -104,6 +110,17 @@ class JsonAppSettings extends AppSettings {
   ThemeMode get themeMode =>
       ThemeMode.values.asMap()[(_cache?[_kThemeMode] as num?)?.toInt()] ??
       ThemeMode.system;
+
+  /// 缺省视为 true（免转存），与旧版本 settings.json 无此键时的行为一致。
+  @override
+  bool get noTransferDownload => _cache?[_kNoTransfer] as bool? ?? true;
+
+  @override
+  Future<void> setNoTransferDownload(bool value) async {
+    final c = await _load();
+    c[_kNoTransfer] = value;
+    await _flush(c);
+  }
 
   @override
   Future<void> setDownloadDir(String dir) async {

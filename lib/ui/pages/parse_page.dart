@@ -7,12 +7,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/bookmarks.dart';
+import '../../core/parse_history.dart';
 import '../../core/settings.dart';
 import '../../domain/parser.dart';
 import '../widgets/file_browser.dart';
 import '../theme/motion.dart';
 import '../widgets/auth_image.dart';
 import '../widgets/page_scaffold.dart';
+import '../widgets/platform_logo.dart';
 import 'media_preview_page.dart';
 import '../../providers.dart';
 
@@ -34,7 +36,10 @@ class ParseDone extends ParseUiState {
   final LinkParser parser;
   final ParseResult result;
   final Set<String> selected; // 文件 path / 媒体 url
-  const ParseDone(this.parser, this.result, this.selected);
+
+  /// 未登录（游客）解析：网盘大文件可能被平台限制，界面据此提示。
+  final bool guest;
+  const ParseDone(this.parser, this.result, this.selected, {this.guest = false});
 }
 
 class ParseFailed extends ParseUiState {
@@ -94,12 +99,86 @@ class _ParsePageState extends ConsumerState<ParsePage> {
           sel.add(m.url);
         }
       }
-      setState(() => _state = ParseDone(parser, result, sel));
+      if (!mounted) return;
+      setState(() => _state =
+          ParseDone(parser, result, sel, guest: !ctx.hasCredential));
+      _recordHistory(
+        url: input,
+        parser: parser,
+        ok: true,
+        summary: _summaryOf(result),
+      );
     } on ParseError catch (e) {
+      if (!mounted) return;
       setState(() => _state = ParseFailed(e, parser.id));
+      _recordHistory(url: input, parser: parser, ok: false, summary: e.message);
     } catch (e) {
+      if (!mounted) return;
       setState(() => _state = ParseFailed(ParseError('解析失败: $e'), parser.id));
+      _recordHistory(url: input, parser: parser, ok: false, summary: '$e');
     }
+  }
+
+  /// 记一条解析历史（失败也记，方便回看「刚才那个链接为什么不行」）。
+  Future<void> _recordHistory({
+    required String url,
+    required LinkParser parser,
+    required bool ok,
+    required String summary,
+  }) async {
+    try {
+      final registry = ref.read(registryProvider);
+      final repo = await ref.read(historyRepoProvider.future);
+      await repo.record(ParseHistoryEntry(
+        id: const Uuid().v4(),
+        url: url,
+        passcode: _passcode.text.trim(),
+        platformId: parser.id,
+        platformName: registry.route(_firstUrl(url) ?? url)?.displayName ?? '',
+        summary: summary,
+        ok: ok,
+        at: DateTime.now(),
+      ));
+      if (mounted) ref.read(historyTickProvider.notifier).state++;
+    } catch (e) {
+      debugPrint('[history] 记录失败（不影响使用）: $e');
+    }
+  }
+
+  /// 结果概要：'3 个文件 · 1.2 GB' / '6 张图片 · 2 个视频'
+  String _summaryOf(ParseResult r) {
+    if (r is MediaSetResult) {
+      final img = r.items.where((m) => m.kind == MediaKind.image).length;
+      final vid = r.items.where((m) => m.kind == MediaKind.video).length;
+      final aud = r.items.where((m) => m.kind == MediaKind.audio).length;
+      return [
+        if (img > 0) '$img 张图片',
+        if (vid > 0) '$vid 个视频',
+        if (aud > 0) '$aud 个音频',
+      ].join(' · ');
+    }
+    if (r is FileTreeResult) {
+      var n = 0;
+      var bytes = 0;
+      _walkFiles(r, (node) {
+        if (node.isDirectory) return;
+        n++;
+        bytes += node.size ?? 0;
+      });
+      return bytes > 0 ? '$n 个文件 · $_humanBytes(bytes)' : '$n 个文件';
+    }
+    return '';
+  }
+
+  static String _humanBytes(int bytes) {
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    var v = bytes.toDouble();
+    var i = 0;
+    while (v >= 1024 && i < units.length - 1) {
+      v /= 1024;
+      i++;
+    }
+    return '${v.toStringAsFixed(v >= 100 ? 0 : 1)} ${units[i]}';
   }
 
   String? _firstUrl(String input) {
@@ -302,8 +381,95 @@ class _ParsePageState extends ConsumerState<ParsePage> {
     );
   }
 
-  String _mediaName(String title, MediaItem item, Set<String> all) {
-    final ext = item.kind == MediaKind.video
+  /// 解析历史：自动记录的解析记录，点击回填并重新解析。
+  Future<void> _showHistory() async {
+    final repo = await ref.read(historyRepoProvider.future);
+    if (!mounted) return;
+    var list = await repo.all();
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('解析历史'),
+          content: SizedBox(
+            width: 620,
+            height: 420,
+            child: list.isEmpty
+                ? const Center(child: Text('还没有解析记录'))
+                : ListView.builder(
+                    itemCount: list.length,
+                    itemBuilder: (_, i) {
+                      final h = list[i];
+                      return ListTile(
+                        dense: true,
+                        leading: h.platformId.isEmpty
+                            ? const Icon(Icons.history, size: 18)
+                            : PlatformLogo(platformId: h.platformId, size: 28),
+                        title: Text(h.url,
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                        subtitle: Text(
+                          [
+                            _relTime(h.at),
+                            if (h.passcode.isNotEmpty) '提取码 ${h.passcode}',
+                            if (h.summary.isNotEmpty) h.summary,
+                          ].join(' · '),
+                          style: TextStyle(
+                            color: h.ok
+                                ? null
+                                : Theme.of(ctx).colorScheme.error,
+                          ),
+                        ),
+                        trailing: IconButton(
+                          tooltip: '删除此条',
+                          icon: const Icon(Icons.delete_outline, size: 18),
+                          onPressed: () async {
+                            await repo.remove(h.id);
+                            final next = await repo.all();
+                            setLocal(() => list = next);
+                            ref.read(historyTickProvider.notifier).state++;
+                          },
+                        ),
+                        onTap: () {
+                          _input.text = h.url;
+                          _passcode.text = h.passcode;
+                          Navigator.pop(ctx);
+                          _parse();
+                        },
+                      );
+                    },
+                  ),
+          ),
+          actions: [
+            if (list.isNotEmpty)
+              TextButton(
+                onPressed: () async {
+                  await repo.clear();
+                  setLocal(() => list = []);
+                  ref.read(historyTickProvider.notifier).state++;
+                },
+                child: const Text('清空'),
+              ),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 相对时间：刚刚 / 5 分钟前 / 3 小时前 / 昨天 / 2026-11-01
+  static String _relTime(DateTime t) {
+    final d = DateTime.now().difference(t);
+    if (d.inMinutes < 1) return '刚刚';
+    if (d.inHours < 1) return '${d.inMinutes} 分钟前';
+    if (d.inDays < 1) return '${d.inHours} 小时前';
+    if (d.inDays == 1) return '昨天';
+    if (d.inDays < 7) return '${d.inDays} 天前';
+    return '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
+  }
+
+  String _mediaName(String title, MediaItem item, Set<String> all) {    final ext = item.kind == MediaKind.video
         ? '.mp4'
         : item.kind == MediaKind.audio
             ? '.mp3'
@@ -319,8 +485,7 @@ class _ParsePageState extends ConsumerState<ParsePage> {
     final theme = Theme.of(context);
     return PageScaffold(
       title: '解析',
-      subtitle: null,
-      child: Column(
+      subtitle: null,      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 表单区限宽：桌面端输入框拉满整个屏幕会很难看
@@ -417,6 +582,9 @@ class _ParsePageState extends ConsumerState<ParsePage> {
                       icon: const Icon(Icons.bookmarks_outlined, size: 18),
                       label: const Text('收藏夹'),
                     ),
+                    const SizedBox(width: 4),
+                    // 解析历史：自动记录，点击可复用（按钮上带条数）
+                    _HistoryButton(onTap: _showHistory),
                   ],
                 ),
               ],
@@ -507,8 +675,7 @@ class _ParsePageState extends ConsumerState<ParsePage> {
   }
 }
 
-class _ResultView extends StatelessWidget {
-  final ParseDone state;
+class _ResultView extends StatelessWidget {  final ParseDone state;
   final ValueChanged<String> onToggle;
   final ValueChanged<List<String>> onSelectAll;
   final void Function(List<String> keys, bool select) onSelectMany;
@@ -546,9 +713,37 @@ class _ResultView extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // 未登录（游客）提示：小文件可直接下，大文件受平台限制
+        if (state.guest && state.parser.kind == PlatformKind.netdisk)
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.tertiaryContainer,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline,
+                    size: 16, color: theme.colorScheme.onTertiaryContainer),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '未登录解析：约 50MB 以内的小文件通常可直接下载（平台限制，以实际为准）；'
+                    '大文件取不到直链时，请到账号页登录后再解析。',
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.colorScheme.onTertiaryContainer),
+                  ),
+                ),
+              ],
+            ),
+          ),
         // 紧凑操作条（桌面端不用大 Chip，节省纵向空间）
         Row(
           children: [
+            // 平台徽标（品牌色块 + 首字，非官方 logo）
+            PlatformLogo(platformId: state.parser.id, size: 22),
+            const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
@@ -693,6 +888,42 @@ class _MediaGrid extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// 「历史」按钮：显示记录条数（跟随 historyCountProvider）。
+class _HistoryButton extends ConsumerWidget {
+  final VoidCallback onTap;
+
+  const _HistoryButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final n = ref.watch(historyCountProvider).value ?? 0;
+    return TextButton.icon(
+      onPressed: onTap,
+      icon: const Icon(Icons.history, size: 18),
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('历史'),
+          if (n > 0) ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.secondaryContainer,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text('$n',
+                  style: theme.textTheme.labelSmall
+                      ?.copyWith(color: theme.colorScheme.onSecondaryContainer)),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

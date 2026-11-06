@@ -19,6 +19,7 @@ class _FixtureServer {
   late String base;
   final Map<String, _Fixture Function(HttpRequest req)> routes;
   final List<HttpRequest> seen = [];
+  final List<String> seenBodies = [];
 
   _FixtureServer(Map<String, _Fixture> staticRoutes)
       : routes = staticRoutes.map((k, v) => MapEntry(k, (_) => v));
@@ -30,6 +31,10 @@ class _FixtureServer {
     base = 'http://${_server.address.host}:${_server.port}';
     _server.listen((req) async {
       seen.add(req);
+      // POST 请求体先读出来（断言「取链时提交了哪些 fid」靠它，不能只看 URL）
+      if (req.method == 'POST') {
+        seenBodies.add(await utf8.decoder.bind(req).join());
+      }
       final f = routes[_matchKey(req.uri.path, req.method)]?.call(req);
       if (f == null) {
         req.response.statusCode = 404;
@@ -68,7 +73,8 @@ class _Fixture {
 }
 
 /// 用 fixture 服务器组装 ParseContext（走真实 HTTP，而非 mock 函数）。
-ParseContext _ctx(_FixtureServer s, {Map<String, String> cookies = const {}}) {
+ParseContext _ctx(_FixtureServer s,
+    {Map<String, String> cookies = const {}, bool noTransferDownload = true}) {
   Future<PHttpResponse> run(RequestOptions opts) async {
     final c = HttpClient();
     final req = await c.openUrl(opts.method, Uri.parse(opts.path));
@@ -115,6 +121,7 @@ ParseContext _ctx(_FixtureServer s, {Map<String, String> cookies = const {}}) {
           path: u.toString(), method: 'POST', data: jsonBody, headers: headers ?? {}));
     },
     log: (_) {},
+    noTransferDownload: noTransferDownload,
   );
 }
 
@@ -297,6 +304,26 @@ void main() {
         'GET /1/clouddrive/share/sharepage/detail': detailFixture,
         // ★ UC 官方端点是 /share/sharepage/v2/detail（带 v2），夸克无 v2
         'GET /1/clouddrive/share/sharepage/v2/detail': detailFixture,
+        // 关闭「免转存下载」时走的转存链路
+        'POST /1/clouddrive/share/sharepage/save': (_) => _Fixture(jsonEncode({
+              'code': 0,
+              'data': {'task_id': 'TASK-1'}
+            })),
+        'GET /1/clouddrive/task': (_) => _Fixture(jsonEncode({
+              'code': 0,
+              'data': {
+                'status': 2,
+                'save_as': {
+                  'save_as_top_fids': ['SAVED-FID']
+                }
+              }
+            })),
+        'POST /1/clouddrive/file/download': (_) => _Fixture(jsonEncode({
+              'code': 0,
+              'data': [
+                {'download_url': 'https://cdn.example/x.mp4'}
+              ]
+            })),
       });
       await s.start();
     });
@@ -345,6 +372,54 @@ void main() {
       expect(req.headers.value('referer'), contains('drive.uc.cn'),
           reason: 'UC 请求应带其官方 Referer');
       expect(req.uri.queryParameters['pr'], 'UCBrowser');
+    });
+
+    test('免转存下载（默认开）：直接对分享文件取链，不碰 /save', () async {
+      final parser = QuarkParser();
+      final ctx = _ctx(s, cookies: {'__pus': 'v1'});
+      final tree = await parser.parse('https://pan.quark.cn/s/abc123', ctx)
+          as FileTreeResult;
+      final url = await parser.resolveDirectUrl(ctx, tree.roots[0]);
+
+      expect(url, 'https://cdn.example/x.mp4');
+      expect(
+        s.seenBodies.any((b) => b.contains('pwd_id') && b.contains('stoken')),
+        isTrue,
+        reason: '免转存取链要带分享上下文（pwd_id + stoken）',
+      );
+      expect(s.seen.map((r) => r.uri.path),
+          isNot(contains('/1/clouddrive/share/sharepage/save')));
+    });
+
+    test('关闭免转存：先转存到自己网盘，再用保存后的 fid 取链', () async {
+      final parser = QuarkParser();
+      final ctx =
+          _ctx(s, cookies: {'__pus': 'v1'}, noTransferDownload: false);
+      final tree = await parser.parse('https://pan.quark.cn/s/abc123', ctx)
+          as FileTreeResult;
+      final url = await parser.resolveDirectUrl(ctx, tree.roots[0]);
+
+      expect(url, 'https://cdn.example/x.mp4');
+      final paths = s.seen.map((r) => r.uri.path).toList();
+      expect(paths, contains('/1/clouddrive/share/sharepage/save'),
+          reason: '关闭免转存应先调用转存接口');
+      expect(paths, contains('/1/clouddrive/task'),
+          reason: '转存是异步任务，必须轮询完成');
+      expect(s.seenBodies.last, contains('SAVED-FID'),
+          reason: '最终取链用的是转存后的 fid，而不是分享 fid');
+    });
+
+    test('关闭免转存但未登录 → credentialExpired（不能默默改走免转存）', () async {
+      final parser = QuarkParser();
+      final ctx = _ctx(s, noTransferDownload: false); // 无 Cookie
+      final tree = await parser.parse('https://pan.quark.cn/s/abc123', ctx)
+          as FileTreeResult;
+      try {
+        await parser.resolveDirectUrl(ctx, tree.roots[0]);
+        fail('未登录时不该走转存');
+      } on ParseError catch (e) {
+        expect(e.kind, ParseErrorKind.credentialExpired);
+      }
     });
   });
 }

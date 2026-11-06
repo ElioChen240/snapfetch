@@ -110,12 +110,24 @@ class ParseContext {
     Map<String, dynamic>? query,
   }) httpPost;
   final void Function(String message) log;
+
+  /// 用户偏好：免转存下载（对应手机版夸克设置项）。
+  ///
+  /// true（默认）= 解析出直链后直接下载，不把文件转存进自己的网盘；
+  /// false = 先转存到自己账号根目录，再从「我的文件」取直链下载
+  ///         （部分文件免转存取不到直链时，这条路能兜住；需已登录）。
+  final bool noTransferDownload;
+
+  /// 当前凭证里是否带了 Cookie/token（false = 未登录，UI 可提示游客限制）。
+  bool get hasCredential => cookies.isNotEmpty;
+
   const ParseContext({
     this.cookies = const {},
     this.baseHeaders = const {},
     required this.httpGet,
     required this.httpPost,
     required this.log,
+    this.noTransferDownload = true,
   });
 
   /// 下载请求必须携带的头（Cookie + Referer）。

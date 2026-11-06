@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/bookmarks.dart';
+import 'core/parse_history.dart';
 import 'core/settings.dart';
 import 'data/auth/credential_vault.dart';
 import 'data/auth/login_rules.dart';
@@ -143,10 +144,14 @@ final parseContextFactoryProvider =
         .toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     final rule = kLoginRules[platformId];
+    // 用户偏好（免转存下载）随上下文注入，解析器不直接读设置
+    final noTransfer =
+        (await ref.watch(settingsProvider.future)).noTransferDownload;
     return SnapHttp.context(
       cookies: cookie.isEmpty ? const {} : cookie.first.cookies,
       referer: rule?.cookieUrl,
       log: (_) {}, // 诊断日志接入点（M4.1：诊断日志默认关、一键导出）
+      noTransferDownload: noTransfer,
     );
   };
 });
@@ -164,3 +169,56 @@ final bookmarkRepoProvider = FutureProvider<BookmarkRepository>((ref) async {
   return BookmarkRepository(
       File('${dir.path}${Platform.pathSeparator}bookmarks.json'));
 });
+
+/// 解析历史仓库（自动记录解析过的链接，对应手机版历史记录）。
+final historyRepoProvider = FutureProvider<ParseHistoryStore>((ref) async {
+  final dir = await ref.watch(appDirProvider.future);
+  return FileParseHistoryStore(
+      File('${dir.path}${Platform.pathSeparator}parse_history.json'));
+});
+
+/// 历史列表刷新信号（记一条 / 删除 / 清空后触发界面重建）。
+final historyTickProvider = StateProvider<int>((_) => 0);
+
+/// 历史条数（解析页「历史」按钮上的角标）。
+final historyCountProvider = FutureProvider<int>((ref) async {
+  ref.watch(historyTickProvider);
+  final repo = await ref.watch(historyRepoProvider.future);
+  return (await repo.all()).length;
+});
+
+/// 某网盘账号的「昵称 + 容量」（进账号页时按需拉一次，失败返回 null 不显示）。
+///
+/// family(`platformId`) 自带缓存：同一平台重复进页面不会重复请求平台接口。
+final accountStatProvider =
+    FutureProvider.family<AccountStat?, String>((ref, platformId) async {
+  CloudBrowser? browser;
+  for (final p in ref.watch(registryProvider).all) {
+    if (p.id == platformId && p is CloudBrowser) browser = p as CloudBrowser;
+  }
+  if (browser == null) return null;
+  final ctx = await ref.watch(parseContextFactoryProvider)(platformId);
+  if (!ctx.hasCredential) return null;
+  // 昵称与容量是两个接口，并行取，任一失败不影响另一个
+  final results = await Future.wait([
+    browser.fetchNickname(ctx).catchError((_) => null),
+    browser.fetchQuota(ctx).catchError((_) => null),
+  ]);
+  final nick = results[0] as String?;
+  final quota = results[1] as ({int used, int total})?;
+  if (nick == null && quota == null) return null;
+  return AccountStat(nickname: nick, used: quota?.used, total: quota?.total);
+});
+
+/// 账号概览（手机版网盘卡片显示：昵称 + 已用/总容量）。
+class AccountStat {
+  final String? nickname;
+  final int? used;
+  final int? total;
+
+  const AccountStat({this.nickname, this.used, this.total});
+
+  /// 容量百分比（0~1）；取不到总量返回 null。
+  double? get ratio =>
+      (used != null && total != null && total! > 0) ? used! / total! : null;
+}

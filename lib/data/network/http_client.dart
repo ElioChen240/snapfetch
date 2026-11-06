@@ -28,6 +28,7 @@ abstract final class SnapHttp {
     required Map<String, String> cookies,
     String? referer,
     required void Function(String) log,
+    bool noTransferDownload = true,
   }) {
     final dio = SnapHttp.dio;
 
@@ -79,6 +80,7 @@ abstract final class SnapHttp {
       httpGet: get,
       httpPost: post,
       log: log,
+      noTransferDownload: noTransferDownload,
     );
   }
 

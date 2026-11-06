@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:snapfetch/core/parse_history.dart';
 import 'package:snapfetch/core/settings.dart';
 import 'package:snapfetch/data/auth/credential_vault.dart';
 import 'package:snapfetch/data/download/task_repository.dart';
@@ -17,6 +18,7 @@ import 'package:snapfetch/providers.dart';
 /// 数据层必须全部 override 为内存版；真实 IO 闭环由 parsers/download 的普通 test 覆盖）。
 
 class _MemorySettings extends AppSettings {
+  bool noTransfer = true;
   @override
   bool get saveFailed => false;
   @override
@@ -26,11 +28,15 @@ class _MemorySettings extends AppSettings {
   @override
   ThemeMode get themeMode => ThemeMode.system;
   @override
+  bool get noTransferDownload => noTransfer;
+  @override
   Future<void> setDownloadDir(String dir) async {}
   @override
   Future<void> setConcurrency(int v) async {}
   @override
   Future<void> setThemeMode(ThemeMode mode) async {}
+  @override
+  Future<void> setNoTransferDownload(bool value) async => noTransfer = value;
 }
 
 class _MemoryVault implements CredentialVault {
@@ -61,8 +67,10 @@ void main() {
     // flutter_test 要求测试结束时还原 —— 用 finally 保证断言失败也还原
     final savedErrorWidgetBuilder = ErrorWidget.builder;
     try {
+      final settings = _MemorySettings();
       final container = ProviderContainer(overrides: [
-        settingsProvider.overrideWith((_) async => _MemorySettings()),
+        settingsProvider.overrideWith((_) async => settings),
+        historyRepoProvider.overrideWith((_) async => MemoryParseHistoryStore()),
         vaultProvider.overrideWith((_) async => _MemoryVault()),
         downloadEngineProvider.overrideWith((_) async => RangeDownloadEngine(
               dio: SnapHttp.dio,
@@ -94,6 +102,17 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       expect(find.text('下载分片并发数'), findsOneWidget);
       expect(find.text('下载目录'), findsOneWidget);
+
+      // ★ 免转存下载开关（对齐手机版夸克设置项），默认开
+      expect(find.text('免转存下载'), findsOneWidget);
+      final noTransferSwitch = tester.widget<Switch>(find.byType(Switch).first);
+      expect(noTransferSwitch.value, isTrue, reason: '默认应免转存，不塞满用户网盘');
+
+      // 关掉 → 写回设置对象
+      await tester.tap(find.byType(Switch).first);
+      await tester.pump();
+      expect(settings.noTransfer, isFalse);
+      expect(tester.widget<Switch>(find.byType(Switch).first).value, isFalse);
     } finally {
       ErrorWidget.builder = savedErrorWidgetBuilder;
     }
