@@ -256,28 +256,38 @@ void main() {
 
   group('夸克 / UC 解析器（签名+流程，fixture 驱动）', () {
     late _FixtureServer s;
+    // 分享详情响应（夸克 /detail、UC /v2/detail 共用同一结构）
+    _Fixture detailFixture(HttpRequest req) {
+      final inSub = req.uri.queryParameters['pdir_fid'] != '0';
+      return _Fixture(jsonEncode({
+        'code': 0,
+        'data': {
+          '_total': inSub ? 0 : 2,
+          'list': inSub
+              ? []
+              : [
+                  {
+                    'file_name': '电影.mp4',
+                    'dir': false,
+                    'fid': 'FILE-FID-1',
+                    'share_fid_token': 'FID1',
+                    'size': 999
+                  },
+                  {'file_name': '字幕', 'dir': true, 'fid': 'DIR1'},
+                ]
+        }
+      }));
+    }
+
     setUp(() async {
       s = _FixtureServer.dynamic({
         'POST /1/clouddrive/share/sharepage/token': (_) => _Fixture(jsonEncode({
               'code': 0,
               'data': {'stoken': 'STOKEN-X'}
             })),
-        'GET /1/clouddrive/share/sharepage/detail': (req) {
-          // 子目录返回空（防递归 fixture）
-          final inSub = req.uri.queryParameters['pdir_fid'] != '0';
-          return _Fixture(jsonEncode({
-            'code': 0,
-            'data': {
-              '_total': inSub ? 0 : 2,
-              'list': inSub
-                  ? []
-                  : [
-                      {'file_name': '电影.mp4', 'dir': false, 'fid': 'FILE-FID-1', 'share_fid_token': 'FID1', 'size': 999},
-                      {'file_name': '字幕', 'dir': true, 'fid': 'DIR1'},
-                    ]
-            }
-          }));
-        },
+        'GET /1/clouddrive/share/sharepage/detail': detailFixture,
+        // ★ UC 官方端点是 /share/sharepage/v2/detail（带 v2），夸克无 v2
+        'GET /1/clouddrive/share/sharepage/v2/detail': detailFixture,
       });
       await s.start();
     });
@@ -319,7 +329,7 @@ void main() {
     });
 
     test('UC：同族流程（独立域名）', () async {
-      final result = await const UcParser().parse('https://drive.uc.cn/s/pqrs', _ctx(s));
+      final result = await UcParser().parse('https://drive.uc.cn/s/pqrs', _ctx(s));
       final tree = result as FileTreeResult;
       expect(tree.roots.length, 2);
       final req = s.seen.first;
