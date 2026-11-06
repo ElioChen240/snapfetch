@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 
+import 'core/app_info.dart';
 import 'providers.dart';
 import 'ui/pages/accounts_page.dart';
 import 'ui/pages/downloads_page.dart';
@@ -225,7 +226,7 @@ class _Sidebar extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.all(12),
             child: Text(
-              'v0.1.0 · 独立非官方',
+              AppInfo.sidebarFooter,
               style: theme.textTheme.labelSmall
                   ?.copyWith(color: theme.colorScheme.outline),
             ),

@@ -2,12 +2,14 @@ import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/app_info.dart';
 import '../../providers.dart';
 import '../widgets/page_scaffold.dart';
 
-/// 设置页（PRD §4.1 第 12 项）：下载目录、并发数、主题。
+/// 设置页（PRD §4.1 第 12 项）：主题、并发数、下载目录、免转存、关于。
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
 
@@ -133,7 +135,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('关于'),
-            subtitle: const Text('v0.1.0 · 独立非官方'),
+            subtitle: Text('${AppInfo.displayVersion} · ${AppInfo.tagline}'),
             trailing: const Icon(Icons.chevron_right, size: 18),
             onTap: () => _showAbout(context),
           ),
@@ -146,25 +148,37 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   /// 关于对话框：只保留必要信息（版本 / 协议 / 项目地址）。
   void _showAbout(BuildContext context) {
     final theme = Theme.of(context);
+    final messenger = ScaffoldMessenger.of(context);
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         icon: Image.asset('assets/icons/snapfetch_compact_48.png', width: 40, height: 40),
-        title: const Text('闪取 SnapFetch'),
+        title: const Text('${AppInfo.nameZh} ${AppInfo.nameEn}'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('版本 0.1.0', style: theme.textTheme.bodyMedium),
+            Text('版本 ${AppInfo.version}', style: theme.textTheme.bodyMedium),
             const SizedBox(height: 8),
             Text(
-              '开源免费 · 独立实现 · 非官方\nAGPL-3.0 License',
+              '${AppInfo.tagline}\n${AppInfo.licenseLine}',
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ],
         ),
         actions: [
+          TextButton.icon(
+            onPressed: () async {
+              await Clipboard.setData(
+                  const ClipboardData(text: AppInfo.repoUrl));
+              if (ctx.mounted) Navigator.pop(ctx);
+              messenger.showSnackBar(
+                  const SnackBar(content: Text('项目地址已复制')));
+            },
+            icon: const Icon(Icons.link, size: 16),
+            label: const Text('复制项目地址'),
+          ),
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
         ],
       ),
