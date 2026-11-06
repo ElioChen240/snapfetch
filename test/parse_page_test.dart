@@ -109,7 +109,7 @@ void main() {
     await tester.pump();
 
     // 输入并解析
-    await tester.enterText(find.byType(TextField), 'https://pan.quark.cn/s/abc');
+    await tester.enterText(find.byType(TextField).first, 'https://pan.quark.cn/s/abc');
     await tester.tap(find.widgetWithText(FilledButton, '解析'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));

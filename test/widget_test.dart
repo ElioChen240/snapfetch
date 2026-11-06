@@ -80,7 +80,7 @@ void main() {
       // 品牌区拆成「闪取」+「SnapFetch」两行（桌面侧边栏形态）
       expect(find.text('闪取'), findsOneWidget);
       expect(find.text('SnapFetch'), findsOneWidget);
-      expect(find.byType(TextField), findsOneWidget, reason: '解析页应有输入框');
+      expect(find.byType(TextField), findsNWidgets(2), reason: '链接 + 提取码两个输入框');
 
       // 切到下载页（空状态）
       await tester.tap(find.text('下载').first);

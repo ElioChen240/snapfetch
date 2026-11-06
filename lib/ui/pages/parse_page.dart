@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/bookmarks.dart';
 import '../../core/settings.dart';
 import '../../domain/parser.dart';
 import '../widgets/file_browser.dart';
@@ -52,17 +53,25 @@ class ParsePage extends ConsumerStatefulWidget {
 
 class _ParsePageState extends ConsumerState<ParsePage> {
   final _input = TextEditingController();
+  /// 提取码（可选）：非空时优先于从文案里自动识别的提取码
+  final _passcode = TextEditingController();
   ParseUiState _state = const ParseIdle();
 
   @override
   void dispose() {
     _input.dispose();
+    _passcode.dispose();
     super.dispose();
   }
 
   Future<void> _parse() async {
-    final input = _input.text.trim();
+    var input = _input.text.trim();
     if (input.isEmpty) return;
+    // 独立提取码输入框优先：把它拼进待解析文本尾部，各解析器沿用同一套识别逻辑
+    final manual = _passcode.text.trim();
+    if (manual.isNotEmpty && !RegExp(r'提取码|密码|pwd=', caseSensitive: false).hasMatch(input)) {
+      input = '$input 提取码: $manual';
+    }
     final registry = ref.read(registryProvider);
     final url = _firstUrl(input) ?? input;
     final parser = registry.route(url);
@@ -208,6 +217,91 @@ class _ParsePageState extends ConsumerState<ParsePage> {
   }
 
 
+  /// 收藏当前输入（链接 + 提取码 + 平台名）。
+  Future<void> _addBookmark() async {
+    final url = _input.text.trim();
+    if (url.isEmpty) return;
+    final registry = ref.read(registryProvider);
+    final parser = registry.route(_firstUrl(url) ?? url);
+    final repo = await ref.read(bookmarkRepoProvider.future);
+    await repo.add(Bookmark(
+      id: const Uuid().v4(),
+      url: url,
+      passcode: _passcode.text.trim(),
+      platformName: parser?.displayName ?? '',
+      createdAt: DateTime.now(),
+    ));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('已收藏${parser == null ? '' : '（${parser.displayName}）'}')),
+    );
+  }
+
+  /// 收藏夹：点击条目回填输入框，或删除。
+  Future<void> _showBookmarks() async {
+    final repo = await ref.read(bookmarkRepoProvider.future);
+    if (!mounted) return;
+    final list = await repo.all();
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('收藏夹'),
+          content: SizedBox(
+            width: 520,
+            child: list.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text('还没有收藏的链接'),
+                  )
+                : ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: list.length,
+                    itemBuilder: (_, i) {
+                      final b = list[i];
+                      return ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.bookmark_outline, size: 18),
+                        title: Text(b.url,
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                        subtitle: Text(
+                          [
+                            if (b.platformName.isNotEmpty) b.platformName,
+                            if (b.passcode.isNotEmpty) '提取码 ${b.passcode}',
+                          ].join(' · '),
+                        ),
+                        trailing: IconButton(
+                          tooltip: '删除',
+                          icon: const Icon(Icons.delete_outline, size: 18),
+                          onPressed: () async {
+                            await repo.remove(b.id);
+                            final next = await repo.all();
+                            setLocal(() {
+                              list
+                                ..clear()
+                                ..addAll(next);
+                            });
+                          },
+                        ),
+                        onTap: () {
+                          _input.text = b.url;
+                          _passcode.text = b.passcode;
+                          Navigator.pop(ctx);
+                          _parse();
+                        },
+                      );
+                    },
+                  ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
+          ],
+        ),
+      ),
+    );
+  }
+
   String _mediaName(String title, MediaItem item, Set<String> all) {
     final ext = item.kind == MediaKind.video
         ? '.mp4'
@@ -244,11 +338,12 @@ class _ParsePageState extends ConsumerState<ParsePage> {
                   maxLines: 3,
                   style: theme.textTheme.bodyMedium,
                   decoration: InputDecoration(
-                    hintText: '粘贴网盘分享链接 / 视频口令（整段文案均可）',
+                    hintText: '例子：https://pan.quark.cn/s/xxxx 或分享口令',
                     border: const OutlineInputBorder(),
                     isDense: true,
                     contentPadding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    prefixIcon: const Icon(Icons.link, size: 18),
                     suffixIcon: IconButton(
                       icon: const Icon(Icons.content_paste, size: 18),
                       tooltip: '从剪贴板粘贴',
@@ -257,7 +352,27 @@ class _ParsePageState extends ConsumerState<ParsePage> {
                   ),
                   onSubmitted: (_) => _parse(),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
+                // 提取码（可选）：链接里没带 / 自动识别失败时手动补
+                SizedBox(
+                  width: 200,
+                  child: TextField(
+                    controller: _passcode,
+                    maxLength: 4,
+                    style: theme.textTheme.bodyMedium,
+                    decoration: const InputDecoration(
+                      hintText: '提取码（可选）',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                      counterText: '',
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      prefixIcon: Icon(Icons.password, size: 18),
+                    ),
+                    onSubmitted: (_) => _parse(),
+                  ),
+                ),
+                const SizedBox(height: 6),
                 Row(
                   children: [
                     // 组 3：loading 用 M3 内置进度指示器（无自定义脉冲/呼吸）
@@ -280,9 +395,27 @@ class _ParsePageState extends ConsumerState<ParsePage> {
                     TextButton(
                       onPressed: () {
                         _input.clear();
+                        _passcode.clear();
                         setState(() => _state = const ParseIdle());
                       },
                       child: const Text('清空'),
+                    ),
+                    const Spacer(),
+                    // 收藏当前链接（对应手机版右上角书签）
+                    // 用 ListenableBuilder 跟随输入实时启用/禁用
+                    ListenableBuilder(
+                      listenable: _input,
+                      builder: (context, _) => IconButton(
+                        tooltip: '收藏此链接',
+                        icon: const Icon(Icons.bookmark_add_outlined, size: 20),
+                        onPressed:
+                            _input.text.trim().isEmpty ? null : _addBookmark,
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: _showBookmarks,
+                      icon: const Icon(Icons.bookmarks_outlined, size: 18),
+                      label: const Text('收藏夹'),
                     ),
                   ],
                 ),

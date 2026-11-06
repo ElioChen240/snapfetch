@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/bookmarks.dart';
 import 'core/settings.dart';
 import 'data/auth/credential_vault.dart';
 import 'data/auth/login_rules.dart';
@@ -156,3 +157,10 @@ final tasksTickProvider = StateProvider<int>((_) => 0);
 /// 当前导航页索引（0=解析 1=下载 2=账号 3=设置）。
 /// 供页面间跳转使用（如解析失败后「去账号页重新登录」）。
 final navIndexProvider = StateProvider<int>((_) => 0);
+
+/// 收藏仓库（收藏链接，对应原版书签功能）。
+final bookmarkRepoProvider = FutureProvider<BookmarkRepository>((ref) async {
+  final dir = await ref.watch(appDirProvider.future);
+  return BookmarkRepository(
+      File('${dir.path}${Platform.pathSeparator}bookmarks.json'));
+});
